@@ -14,7 +14,18 @@ export function useGetCallerUserProfile() {
     queryKey: ["currentUserProfile"],
     queryFn: async () => {
       if (!actor) throw new Error("Actor not available");
-      return actor.getCallerUserProfile();
+      try {
+        return await actor.getCallerUserProfile();
+      } catch (err: unknown) {
+        // Backend throws "User is not registered" or "Unauthorized" for brand-new users
+        // who haven't called saveCallerUserProfile yet. Treat this as "no profile" so
+        // the ProfileSetup modal will appear and trigger auto-role-assignment.
+        const msg = err instanceof Error ? err.message : String(err);
+        if (msg.includes("not registered") || msg.includes("Unauthorized")) {
+          return null;
+        }
+        throw err;
+      }
     },
     enabled: !!actor && !actorFetching && !isInitializing,
     retry: false,
@@ -40,6 +51,10 @@ export function useSaveCallerUserProfile() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["currentUserProfile"] });
+      // Invalidate role-related queries so the nav and admin checks update immediately
+      // after the backend auto-assigns a role on first save
+      queryClient.invalidateQueries({ queryKey: ["isCallerAdmin"] });
+      queryClient.invalidateQueries({ queryKey: ["callerUserRole"] });
     },
   });
 }

@@ -10,7 +10,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useSaveCallerUserProfile } from "@/hooks/useQueries";
+import { useSaveCallerUserProfile, useIsCallerAdmin } from "@/hooks/useQueries";
 import { toast } from "sonner";
 
 interface ProfileSetupProps {
@@ -20,13 +20,27 @@ interface ProfileSetupProps {
 export default function ProfileSetup({ open }: ProfileSetupProps) {
   const [name, setName] = useState("");
   const saveMutation = useSaveCallerUserProfile();
+  const { refetch: refetchIsAdmin } = useIsCallerAdmin();
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
     try {
       await saveMutation.mutateAsync({ name: name.trim() });
-      toast.success("Profile saved — welcome!");
+
+      // After saving, check if this user became an admin (first-ever user)
+      // or a guest (subsequent users waiting for approval)
+      const { data: isAdmin } = await refetchIsAdmin();
+
+      if (isAdmin) {
+        toast.success("Welcome, Admin! You're the first user — you have full access.", {
+          duration: 6000,
+        });
+      } else {
+        toast.info("Profile saved! Your account is pending approval. An admin will grant you access shortly.", {
+          duration: 8000,
+        });
+      }
     } catch {
       toast.error("Failed to save profile");
     }

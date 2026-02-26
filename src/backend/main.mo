@@ -11,10 +11,7 @@ import List "mo:core/List";
 import Principal "mo:core/Principal";
 import MixinAuthorization "authorization/MixinAuthorization";
 import AccessControl "authorization/access-control";
-import Migration "migration";
-import Option "mo:core/Option";
 
-(with migration = Migration.run)
 actor {
   let nanosecondToSeconds = 1_000_000_000;
   let weekdayOffset = 1;
@@ -113,35 +110,11 @@ actor {
     var lastAssignedId = 0;
   };
 
-  // Initialize the access control system
+  // Access control and profile management
   let accessControlState = AccessControl.initState();
   include MixinAuthorization(accessControlState);
 
-  // User profile management
   let userProfiles = Map.empty<Principal, UserProfile>();
-
-  public query ({ caller }) func getCallerUserProfile() : async ?UserProfile {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only users can view profiles");
-    };
-    userProfiles.get(caller);
-  };
-
-  public query ({ caller }) func getUserProfile(user : Principal) : async ?UserProfile {
-    if (caller != user and not AccessControl.isAdmin(accessControlState, caller)) {
-      Runtime.trap("Unauthorized: Can only view your own profile");
-    };
-    userProfiles.get(user);
-  };
-
-  public shared ({ caller }) func saveCallerUserProfile(profile : UserProfile) : async () {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only users can save profiles");
-    };
-    userProfiles.add(caller, profile);
-  };
-
-  // Default is 10 for each period
   let hourlyLimits = Map.empty<Nat, Nat>();
 
   // Helper function: Converts nanoseconds to YYYY-MM-DD Text
@@ -466,5 +439,38 @@ actor {
     };
 
     AccessControl.assignRole(accessControlState, caller, user, role);
+  };
+
+  public query ({ caller }) func getCallerUserProfile() : async ?UserProfile {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can view profiles");
+    };
+    userProfiles.get(caller);
+  };
+
+  public query ({ caller }) func getUserProfile(user : Principal) : async ?UserProfile {
+    if (caller != user and not AccessControl.isAdmin(accessControlState, caller)) {
+      Runtime.trap("Unauthorized: Can only view your own profile");
+    };
+    userProfiles.get(user);
+  };
+
+  public shared ({ caller }) func saveCallerUserProfile(profile : UserProfile) : async () {
+    if (caller.isAnonymous()) Runtime.trap("Anonymous not allowed");
+    
+    switch (accessControlState.userRoles.get(caller)) {
+      case (null) {
+        // New user - assign role
+        if (not accessControlState.adminAssigned) {
+          accessControlState.userRoles.add(caller, #admin);
+          accessControlState.adminAssigned := true;
+        } else {
+          accessControlState.userRoles.add(caller, #guest);
+        };
+      };
+      case (?_) { /* already has role */ };
+    };
+    
+    userProfiles.add(caller, profile);
   };
 };
