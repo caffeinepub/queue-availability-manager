@@ -1,0 +1,200 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap');
+
+@layer base {
+  :root {
+    --radius: 0.5rem;
+
+    /* Core palette — navy + teal accent */
+    --background: 0.97 0.006 240;
+    --foreground: 0.18 0.02 250;
+    --card: 1 0 0;
+    --card-foreground: 0.18 0.02 250;
+    --popover: 1 0 0;
+    --popover-foreground: 0.18 0.02 250;
+
+    --primary: 0.55 0.18 210;
+    --primary-foreground: 0.985 0 0;
+
+    --secondary: 0.93 0.01 240;
+    --secondary-foreground: 0.25 0.02 250;
+
+    --muted: 0.93 0.008 240;
+    --muted-foreground: 0.48 0.015 250;
+
+    --accent: 0.55 0.18 210;
+    --accent-foreground: 0.985 0 0;
+
+    --destructive: 0.577 0.245 27.325;
+    --destructive-foreground: 0.985 0 0;
+
+    --border: 0.88 0.012 240;
+    --input: 0.88 0.012 240;
+    --ring: 0.55 0.18 210;
+
+    /* Status colors */
+    --success: 0.62 0.18 150;
+    --success-foreground: 0.985 0 0;
+    --warning: 0.72 0.18 65;
+    --warning-foreground: 0.18 0.02 250;
+    --danger: 0.577 0.245 27.325;
+    --danger-foreground: 0.985 0 0;
+
+    /* Chart */
+    --chart-1: 0.55 0.18 210;
+    --chart-2: 0.62 0.18 150;
+    --chart-3: 0.72 0.18 65;
+    --chart-4: 0.577 0.245 27.325;
+    --chart-5: 0.65 0.15 280;
+
+    /* Sidebar */
+    --sidebar: 0.18 0.025 245;
+    --sidebar-foreground: 0.9 0.01 240;
+    --sidebar-primary: 0.55 0.18 210;
+    --sidebar-primary-foreground: 0.985 0 0;
+    --sidebar-accent: 0.25 0.03 245;
+    --sidebar-accent-foreground: 0.9 0.01 240;
+    --sidebar-border: 0.28 0.025 245;
+    --sidebar-ring: 0.55 0.18 210;
+  }
+
+  .dark {
+    --background: 0.14 0.025 245;
+    --foreground: 0.92 0.01 240;
+    --card: 0.19 0.025 245;
+    --card-foreground: 0.92 0.01 240;
+    --popover: 0.22 0.025 245;
+    --popover-foreground: 0.92 0.01 240;
+
+    --primary: 0.62 0.18 210;
+    --primary-foreground: 0.12 0.02 250;
+
+    --secondary: 0.25 0.025 245;
+    --secondary-foreground: 0.92 0.01 240;
+
+    --muted: 0.25 0.025 245;
+    --muted-foreground: 0.58 0.015 245;
+
+    --accent: 0.62 0.18 210;
+    --accent-foreground: 0.12 0.02 250;
+
+    --destructive: 0.65 0.22 27.325;
+    --destructive-foreground: 0.985 0 0;
+
+    --border: 0.28 0.025 245;
+    --input: 0.28 0.025 245;
+    --ring: 0.62 0.18 210;
+
+    /* Status colors */
+    --success: 0.65 0.18 150;
+    --success-foreground: 0.12 0.02 250;
+    --warning: 0.75 0.18 65;
+    --warning-foreground: 0.12 0.02 250;
+    --danger: 0.65 0.22 27.325;
+    --danger-foreground: 0.985 0 0;
+
+    /* Chart */
+    --chart-1: 0.62 0.18 210;
+    --chart-2: 0.65 0.18 150;
+    --chart-3: 0.75 0.18 65;
+    --chart-4: 0.65 0.22 27.325;
+    --chart-5: 0.68 0.15 280;
+
+    /* Sidebar */
+    --sidebar: 0.19 0.025 245;
+    --sidebar-foreground: 0.92 0.01 240;
+    --sidebar-primary: 0.62 0.18 210;
+    --sidebar-primary-foreground: 0.12 0.02 250;
+    --sidebar-accent: 0.25 0.025 245;
+    --sidebar-accent-foreground: 0.92 0.01 240;
+    --sidebar-border: 0.28 0.025 245;
+    --sidebar-ring: 0.62 0.18 210;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+}
+
+@layer utilities {
+  .font-mono-data {
+    font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  }
+
+  .text-success {
+    color: oklch(var(--success));
+  }
+  .text-warning {
+    color: oklch(var(--warning));
+  }
+  .text-danger {
+    color: oklch(var(--danger));
+  }
+  .bg-success {
+    background-color: oklch(var(--success));
+  }
+  .bg-warning {
+    background-color: oklch(var(--warning));
+  }
+  .bg-danger {
+    background-color: oklch(var(--danger));
+  }
+  .bg-success\/10 {
+    background-color: oklch(var(--success) / 0.1);
+  }
+  .bg-warning\/10 {
+    background-color: oklch(var(--warning) / 0.1);
+  }
+  .bg-danger\/10 {
+    background-color: oklch(var(--danger) / 0.1);
+  }
+  .border-success {
+    border-color: oklch(var(--success));
+  }
+  .border-warning {
+    border-color: oklch(var(--warning));
+  }
+  .border-danger {
+    border-color: oklch(var(--danger));
+  }
+
+  /* Slot counter ring animation */
+  @keyframes slot-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+  }
+
+  .animate-slot-pulse {
+    animation: slot-pulse 2s ease-in-out infinite;
+  }
+
+  /* Fade-in stagger animations */
+  @keyframes fade-up {
+    from {
+      opacity: 0;
+      transform: translateY(12px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .animate-fade-up {
+    animation: fade-up 0.4s ease-out forwards;
+  }
+
+  .stagger-1 { animation-delay: 0.05s; opacity: 0; }
+  .stagger-2 { animation-delay: 0.1s; opacity: 0; }
+  .stagger-3 { animation-delay: 0.15s; opacity: 0; }
+  .stagger-4 { animation-delay: 0.2s; opacity: 0; }
+  .stagger-5 { animation-delay: 0.25s; opacity: 0; }
+}
