@@ -1,7 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useActor } from "./useActor";
 import { useInternetIdentity } from "./useInternetIdentity";
-import type { ApprovalEntry, UserProfile, DaySummary, DailyRecord, SlotUsage } from "../backend.d";
+import type { ApprovalEntry, UserProfile, DaySummary, DailyRecord, SlotUsage, HourlyLimit, SlotUsageWithLimit, UserInfo, UserRole } from "../backend.d";
+import type { Principal } from "@icp-sdk/core/principal";
 
 // ── User Profile ─────────────────────────────────────────────────────────────
 
@@ -144,6 +145,95 @@ export function useRemoveApproval() {
       queryClient.invalidateQueries({ queryKey: ["remainingSlots"] });
       queryClient.invalidateQueries({ queryKey: ["slotUsage"] });
     },
+  });
+}
+
+// ── Slot Usage With Limits ────────────────────────────────────────────────────
+
+export function useGetSlotUsageWithLimits() {
+  const { actor, isFetching } = useActor();
+  const { isInitializing } = useInternetIdentity();
+  return useQuery<SlotUsageWithLimit[]>({
+    queryKey: ["slotUsageWithLimits"],
+    queryFn: async () => {
+      if (!actor) return [];
+      return actor.getSlotUsageWithLimits();
+    },
+    enabled: !!actor && !isFetching && !isInitializing,
+  });
+}
+
+// ── Hourly Limits ─────────────────────────────────────────────────────────────
+
+export function useGetHourlyLimits() {
+  const { actor, isFetching } = useActor();
+  const { isInitializing } = useInternetIdentity();
+  return useQuery<HourlyLimit[]>({
+    queryKey: ["hourlyLimits"],
+    queryFn: async () => {
+      if (!actor) return [];
+      return actor.getHourlyLimits();
+    },
+    enabled: !!actor && !isFetching && !isInitializing,
+  });
+}
+
+export function useSetHourlyLimit() {
+  const { actor } = useActor();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ periodIndex, limit }: { periodIndex: number; limit: number }) => {
+      if (!actor) throw new Error("Actor not available");
+      await actor.setHourlyLimit(BigInt(periodIndex), BigInt(limit));
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["hourlyLimits"] });
+      queryClient.invalidateQueries({ queryKey: ["slotUsageWithLimits"] });
+    },
+  });
+}
+
+// ── User Management ───────────────────────────────────────────────────────────
+
+export function useListAllUsers() {
+  const { actor, isFetching } = useActor();
+  const { isInitializing } = useInternetIdentity();
+  return useQuery<UserInfo[]>({
+    queryKey: ["allUsers"],
+    queryFn: async () => {
+      if (!actor) return [];
+      return actor.listAllUsers();
+    },
+    enabled: !!actor && !isFetching && !isInitializing,
+  });
+}
+
+export function useSetUserRole() {
+  const { actor } = useActor();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ user, role }: { user: Principal; role: UserRole }) => {
+      if (!actor) throw new Error("Actor not available");
+      await actor.setUserRole(user, role);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["allUsers"] });
+    },
+  });
+}
+
+export function useIsCallerAdmin() {
+  const { actor, isFetching } = useActor();
+  const { isInitializing } = useInternetIdentity();
+  return useQuery<boolean>({
+    queryKey: ["isCallerAdmin"],
+    queryFn: async () => {
+      if (!actor) return false;
+      return actor.isCallerAdmin();
+    },
+    enabled: !!actor && !isFetching && !isInitializing,
   });
 }
 

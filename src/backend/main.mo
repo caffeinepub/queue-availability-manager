@@ -11,10 +11,10 @@ import List "mo:core/List";
 import Principal "mo:core/Principal";
 import MixinAuthorization "authorization/MixinAuthorization";
 import AccessControl "authorization/access-control";
-
+import Migration "migration";
 import Option "mo:core/Option";
 
-
+(with migration = Migration.run)
 actor {
   let nanosecondToSeconds = 1_000_000_000;
   let weekdayOffset = 1;
@@ -77,8 +77,25 @@ actor {
     count : Nat;
   };
 
+  public type SlotUsageWithLimit = {
+    timeSlot : Text;
+    count : Nat;
+    limit : Nat;
+  };
+
+  public type HourlyLimit = {
+    periodIndex : Nat;
+    limit : Nat;
+  };
+
   public type UserProfile = {
     name : Text;
+  };
+
+  public type UserInfo = {
+    principal : Principal;
+    name : Text;
+    role : AccessControl.UserRole;
   };
 
   type State = {
@@ -89,7 +106,7 @@ actor {
   };
 
   let historyStore = Map.empty<Text, DailyRecord>();
-  let state : State = {
+  var state : State = {
     var lastUpdateNs = Time.now();
     var dailyCap = defaultDailyCap;
     var dailyApprovals = List.empty<ApprovalEntry>();
@@ -123,6 +140,9 @@ actor {
     };
     userProfiles.add(caller, profile);
   };
+
+  // Default is 10 for each period
+  let hourlyLimits = Map.empty<Nat, Nat>();
 
   // Helper function: Converts nanoseconds to YYYY-MM-DD Text
   func nanosecondsToDateString(nanoseconds : Int) : Text {
@@ -239,7 +259,11 @@ actor {
     if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
       Runtime.trap("Unauthorized: Only authenticated users can view slot usage");
     };
+    getSlotUsageInternal();
+  };
 
+  // Helper function for slot usage
+  func getSlotUsageInternal() : [SlotUsage] {
     let approvalsArray = state.dailyApprovals.toArray();
     let latestIndex = displayPeriods.size() - 1 : Nat;
 
@@ -267,6 +291,46 @@ actor {
     results.toArray();
   };
 
+  public query ({ caller }) func getHourlyLimits() : async [HourlyLimit] {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only authenticated users or admins can view hourly limits");
+    };
+
+    let limits = List.empty<HourlyLimit>();
+
+    for ((periodIndex, limit) in hourlyLimits.entries()) {
+      limits.add({ periodIndex; limit });
+    };
+
+    limits.toArray();
+  };
+
+  public query ({ caller }) func getSlotUsageWithLimits() : async [SlotUsageWithLimit] {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only authenticated users or admins can view slot usage with limits");
+    };
+
+    let slotUsages = getSlotUsageInternal();
+    let results = List.empty<SlotUsageWithLimit>();
+
+    for (slot in slotUsages.values()) {
+      let periodIndex = switch (displayPeriods.indexOf(slot.timeSlot)) {
+        case (?idx) { idx };
+        case (null) { 0 : Nat };
+      };
+      let limit = switch (hourlyLimits.get(periodIndex)) {
+        case (?l) { l };
+        case (null) { 10 };
+      };
+      results.add({
+        slot with
+        limit;
+      });
+    };
+
+    results.toArray();
+  };
+
   // PUBLIC UPDATES
 
   public shared ({ caller }) func setDailyCap(cap : Nat) : async () {
@@ -277,14 +341,26 @@ actor {
     state.dailyCap := cap;
   };
 
+  public shared ({ caller }) func setHourlyLimit(periodIndex : Nat, limit : Nat) : async () {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
+      Runtime.trap("Unauthorized: Only admins can set hourly limits");
+    };
+
+    if (periodIndex >= displayPeriods.size()) {
+      Runtime.trap("Invalid period index");
+    };
+
+    hourlyLimits.add(periodIndex, limit);
+  };
+
   public shared ({ caller }) func addApproval(
     icName : Text,
     managerName : Text,
     startHour : Text,
     endHour : Text,
   ) : async ApprovalEntry {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
-      Runtime.trap("Unauthorized: Only admins can add approvals");
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can add approvals");
     };
     checkAndResetDay();
 
@@ -307,7 +383,7 @@ actor {
       Runtime.trap("End hour must be later than start hour");
     };
 
-    // Check period max (10 active approvals per slot)
+    // New period max (variable approvals per slot)
     for (periodIndex in Nat.range(startIndex, endIndex)) {
       let periodCount = approvalsArray.filter(
         func(entry) {
@@ -320,7 +396,12 @@ actor {
         }
       ).size();
 
-      if (periodCount >= 10) {
+      let periodLimit = switch (hourlyLimits.get(periodIndex)) {
+        case (?limit) { limit };
+        case (null) { 10 };
+      };
+
+      if (periodCount >= periodLimit) {
         Runtime.trap("Cannot add approval: Period " # periodIndex.toText() # " is full");
       };
     };
@@ -340,8 +421,8 @@ actor {
   };
 
   public shared ({ caller }) func removeApproval(entryId : Nat) : async () {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
-      Runtime.trap("Unauthorized: Only admins can remove approvals");
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can remove approvals");
     };
     checkAndResetDay();
 
@@ -356,5 +437,34 @@ actor {
     for (entry in filteredApprovals.values()) {
       state.dailyApprovals.add(entry);
     };
+  };
+
+  // New Admin Functions
+
+  public query ({ caller }) func listAllUsers() : async [UserInfo] {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
+      Runtime.trap("Unauthorized: Only admins can list users");
+    };
+
+    let result = List.empty<UserInfo>();
+
+    for ((principal, profile) in userProfiles.entries()) {
+      let role = AccessControl.getUserRole(accessControlState, principal);
+      result.add({
+        principal;
+        name = profile.name;
+        role;
+      });
+    };
+
+    result.toArray();
+  };
+
+  public shared ({ caller }) func setUserRole(user : Principal, role : AccessControl.UserRole) : async () {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
+      Runtime.trap("Unauthorized: Only admins can set user roles");
+    };
+
+    AccessControl.assignRole(accessControlState, caller, user, role);
   };
 };

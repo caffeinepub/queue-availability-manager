@@ -26,8 +26,17 @@ export const DailyRecord = IDL.Record({
   'cap' : IDL.Nat,
   'approvals' : IDL.Vec(ApprovalEntry),
 });
+export const HourlyLimit = IDL.Record({
+  'limit' : IDL.Nat,
+  'periodIndex' : IDL.Nat,
+});
 export const SlotUsage = IDL.Record({
   'count' : IDL.Nat,
+  'timeSlot' : IDL.Text,
+});
+export const SlotUsageWithLimit = IDL.Record({
+  'count' : IDL.Nat,
+  'limit' : IDL.Nat,
   'timeSlot' : IDL.Text,
 });
 export const DaySummary = IDL.Record({
@@ -35,6 +44,11 @@ export const DaySummary = IDL.Record({
   'countApproved' : IDL.Nat,
   'date' : IDL.Text,
   'icNames' : IDL.Vec(IDL.Text),
+});
+export const UserInfo = IDL.Record({
+  'principal' : IDL.Principal,
+  'name' : IDL.Text,
+  'role' : UserRole,
 });
 
 export const idlService = IDL.Service({
@@ -54,8 +68,14 @@ export const idlService = IDL.Service({
       [IDL.Vec(IDL.Tuple(IDL.Text, DailyRecord))],
       ['query'],
     ),
+  'getHourlyLimits' : IDL.Func([], [IDL.Vec(HourlyLimit)], ['query']),
   'getRemainingSlots' : IDL.Func([], [IDL.Nat], ['query']),
   'getSlotUsage' : IDL.Func([], [IDL.Vec(SlotUsage)], ['query']),
+  'getSlotUsageWithLimits' : IDL.Func(
+      [],
+      [IDL.Vec(SlotUsageWithLimit)],
+      ['query'],
+    ),
   'getSummary' : IDL.Func([], [IDL.Vec(DaySummary)], ['query']),
   'getUserProfile' : IDL.Func(
       [IDL.Principal],
@@ -63,9 +83,12 @@ export const idlService = IDL.Service({
       ['query'],
     ),
   'isCallerAdmin' : IDL.Func([], [IDL.Bool], ['query']),
+  'listAllUsers' : IDL.Func([], [IDL.Vec(UserInfo)], ['query']),
   'removeApproval' : IDL.Func([IDL.Nat], [], []),
   'saveCallerUserProfile' : IDL.Func([UserProfile], [], []),
   'setDailyCap' : IDL.Func([IDL.Nat], [], []),
+  'setHourlyLimit' : IDL.Func([IDL.Nat, IDL.Nat], [], []),
+  'setUserRole' : IDL.Func([IDL.Principal, UserRole], [], []),
 });
 
 export const idlInitArgs = [];
@@ -89,12 +112,26 @@ export const idlFactory = ({ IDL }) => {
     'cap' : IDL.Nat,
     'approvals' : IDL.Vec(ApprovalEntry),
   });
+  const HourlyLimit = IDL.Record({
+    'limit' : IDL.Nat,
+    'periodIndex' : IDL.Nat,
+  });
   const SlotUsage = IDL.Record({ 'count' : IDL.Nat, 'timeSlot' : IDL.Text });
+  const SlotUsageWithLimit = IDL.Record({
+    'count' : IDL.Nat,
+    'limit' : IDL.Nat,
+    'timeSlot' : IDL.Text,
+  });
   const DaySummary = IDL.Record({
     'cap' : IDL.Nat,
     'countApproved' : IDL.Nat,
     'date' : IDL.Text,
     'icNames' : IDL.Vec(IDL.Text),
+  });
+  const UserInfo = IDL.Record({
+    'principal' : IDL.Principal,
+    'name' : IDL.Text,
+    'role' : UserRole,
   });
   
   return IDL.Service({
@@ -114,8 +151,14 @@ export const idlFactory = ({ IDL }) => {
         [IDL.Vec(IDL.Tuple(IDL.Text, DailyRecord))],
         ['query'],
       ),
+    'getHourlyLimits' : IDL.Func([], [IDL.Vec(HourlyLimit)], ['query']),
     'getRemainingSlots' : IDL.Func([], [IDL.Nat], ['query']),
     'getSlotUsage' : IDL.Func([], [IDL.Vec(SlotUsage)], ['query']),
+    'getSlotUsageWithLimits' : IDL.Func(
+        [],
+        [IDL.Vec(SlotUsageWithLimit)],
+        ['query'],
+      ),
     'getSummary' : IDL.Func([], [IDL.Vec(DaySummary)], ['query']),
     'getUserProfile' : IDL.Func(
         [IDL.Principal],
@@ -123,9 +166,12 @@ export const idlFactory = ({ IDL }) => {
         ['query'],
       ),
     'isCallerAdmin' : IDL.Func([], [IDL.Bool], ['query']),
+    'listAllUsers' : IDL.Func([], [IDL.Vec(UserInfo)], ['query']),
     'removeApproval' : IDL.Func([IDL.Nat], [], []),
     'saveCallerUserProfile' : IDL.Func([UserProfile], [], []),
     'setDailyCap' : IDL.Func([IDL.Nat], [], []),
+    'setHourlyLimit' : IDL.Func([IDL.Nat, IDL.Nat], [], []),
+    'setUserRole' : IDL.Func([IDL.Principal, UserRole], [], []),
   });
 };
 

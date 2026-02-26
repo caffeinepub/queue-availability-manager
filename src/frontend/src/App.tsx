@@ -2,16 +2,17 @@ import React, { useState } from "react";
 import { Toaster } from "@/components/ui/sonner";
 import { useInternetIdentity } from "@/hooks/useInternetIdentity";
 import { useQueryClient } from "@tanstack/react-query";
-import { LayoutDashboard, History, LogOut, Loader2, Heart } from "lucide-react";
+import { LayoutDashboard, History, LogOut, Loader2, Heart, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import LoginPage from "@/pages/Login";
 import DashboardPage from "@/pages/Dashboard";
 import HistoryPage from "@/pages/History";
+import ConfigPage from "@/pages/Config";
 import ProfileSetup from "@/components/ProfileSetup";
-import { useGetCallerUserProfile } from "@/hooks/useQueries";
+import { useGetCallerUserProfile, useIsCallerAdmin } from "@/hooks/useQueries";
 
-type Tab = "dashboard" | "history";
+type Tab = "dashboard" | "history" | "config";
 
 function AppShell() {
   const [activeTab, setActiveTab] = useState<Tab>("dashboard");
@@ -19,6 +20,7 @@ function AppShell() {
   const queryClient = useQueryClient();
 
   const { data: userProfile, isLoading: profileLoading, isFetched: profileFetched, isError: profileError } = useGetCallerUserProfile();
+  const { data: isAdmin = false } = useIsCallerAdmin();
 
   const isAuthenticated = !!identity;
   // Guard against error states (e.g. anonymous principal) to prevent spurious modal flash
@@ -31,10 +33,14 @@ function AppShell() {
 
   const userName = userProfile?.name ?? identity?.getPrincipal().toString().slice(0, 8) + "…";
 
-  const navItems: { id: Tab; label: string; Icon: typeof LayoutDashboard }[] = [
+  const baseNavItems: { id: Tab; label: string; Icon: typeof LayoutDashboard }[] = [
     { id: "dashboard", label: "Dashboard", Icon: LayoutDashboard },
     { id: "history", label: "History", Icon: History },
   ];
+
+  const navItems = isAdmin
+    ? [...baseNavItems, { id: "config" as Tab, label: "Config", Icon: Settings }]
+    : baseNavItems;
 
   return (
     <>
@@ -98,6 +104,7 @@ function AppShell() {
       <main className="max-w-6xl mx-auto px-4 sm:px-6 py-6">
         {activeTab === "dashboard" && <DashboardPage />}
         {activeTab === "history" && <HistoryPage />}
+        {activeTab === "config" && isAdmin && <ConfigPage />}
       </main>
 
       {/* Footer */}

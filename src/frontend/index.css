@@ -197,4 +197,28 @@
   .stagger-3 { animation-delay: 0.15s; opacity: 0; }
   .stagger-4 { animation-delay: 0.2s; opacity: 0; }
   .stagger-5 { animation-delay: 0.25s; opacity: 0; }
+
+  /* Guest / new user highlight */
+  .text-guest {
+    color: oklch(0.62 0.18 50);
+  }
+  .bg-guest-row {
+    background-color: oklch(0.97 0.04 65 / 0.6);
+  }
+  .border-guest {
+    border-color: oklch(0.72 0.18 50 / 0.4);
+  }
+  .badge-guest {
+    background-color: oklch(0.72 0.18 50 / 0.15);
+    color: oklch(0.52 0.18 50);
+    border-color: oklch(0.72 0.18 50 / 0.3);
+  }
+  .dark .bg-guest-row {
+    background-color: oklch(0.3 0.06 55 / 0.35);
+  }
+  .dark .badge-guest {
+    background-color: oklch(0.4 0.12 55 / 0.3);
+    color: oklch(0.78 0.18 65);
+    border-color: oklch(0.6 0.18 55 / 0.4);
+  }
 }

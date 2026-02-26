@@ -89,6 +89,10 @@ export class ExternalBlob {
         return this;
     }
 }
+export interface HourlyLimit {
+    limit: bigint;
+    periodIndex: bigint;
+}
 export interface DaySummary {
     cap: bigint;
     countApproved: bigint;
@@ -99,9 +103,22 @@ export interface SlotUsage {
     count: bigint;
     timeSlot: string;
 }
+export interface SlotUsageWithLimit {
+    count: bigint;
+    limit: bigint;
+    timeSlot: string;
+}
 export interface DailyRecord {
     cap: bigint;
     approvals: Array<ApprovalEntry>;
+}
+export interface UserInfo {
+    principal: Principal;
+    name: string;
+    role: UserRole;
+}
+export interface UserProfile {
+    name: string;
 }
 export interface ApprovalEntry {
     endHour: string;
@@ -110,9 +127,6 @@ export interface ApprovalEntry {
     timestampNs: bigint;
     startHour: string;
     managerName: string;
-}
-export interface UserProfile {
-    name: string;
 }
 export enum UserRole {
     admin = "admin",
@@ -128,16 +142,21 @@ export interface backendInterface {
     getDailyApprovals(): Promise<Array<ApprovalEntry>>;
     getDailyCap(): Promise<bigint>;
     getHistory(startDate: string | null, endDate: string | null): Promise<Array<[string, DailyRecord]>>;
+    getHourlyLimits(): Promise<Array<HourlyLimit>>;
     getRemainingSlots(): Promise<bigint>;
     getSlotUsage(): Promise<Array<SlotUsage>>;
+    getSlotUsageWithLimits(): Promise<Array<SlotUsageWithLimit>>;
     getSummary(): Promise<Array<DaySummary>>;
     getUserProfile(user: Principal): Promise<UserProfile | null>;
     isCallerAdmin(): Promise<boolean>;
+    listAllUsers(): Promise<Array<UserInfo>>;
     removeApproval(entryId: bigint): Promise<void>;
     saveCallerUserProfile(profile: UserProfile): Promise<void>;
     setDailyCap(cap: bigint): Promise<void>;
+    setHourlyLimit(periodIndex: bigint, limit: bigint): Promise<void>;
+    setUserRole(user: Principal, role: UserRole): Promise<void>;
 }
-import type { UserProfile as _UserProfile, UserRole as _UserRole } from "./declarations/backend.did.d.ts";
+import type { UserInfo as _UserInfo, UserProfile as _UserProfile, UserRole as _UserRole } from "./declarations/backend.did.d.ts";
 export class Backend implements backendInterface {
     constructor(private actor: ActorSubclass<_SERVICE>, private _uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, private _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, private processError?: (error: unknown) => never){}
     async _initializeAccessControlWithSecret(arg0: string): Promise<void> {
@@ -252,6 +271,20 @@ export class Backend implements backendInterface {
             return result;
         }
     }
+    async getHourlyLimits(): Promise<Array<HourlyLimit>> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.getHourlyLimits();
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.getHourlyLimits();
+            return result;
+        }
+    }
     async getRemainingSlots(): Promise<bigint> {
         if (this.processError) {
             try {
@@ -277,6 +310,20 @@ export class Backend implements backendInterface {
             }
         } else {
             const result = await this.actor.getSlotUsage();
+            return result;
+        }
+    }
+    async getSlotUsageWithLimits(): Promise<Array<SlotUsageWithLimit>> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.getSlotUsageWithLimits();
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.getSlotUsageWithLimits();
             return result;
         }
     }
@@ -322,6 +369,20 @@ export class Backend implements backendInterface {
             return result;
         }
     }
+    async listAllUsers(): Promise<Array<UserInfo>> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.listAllUsers();
+                return from_candid_vec_n7(this._uploadFile, this._downloadFile, result);
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.listAllUsers();
+            return from_candid_vec_n7(this._uploadFile, this._downloadFile, result);
+        }
+    }
     async removeApproval(arg0: bigint): Promise<void> {
         if (this.processError) {
             try {
@@ -364,12 +425,58 @@ export class Backend implements backendInterface {
             return result;
         }
     }
+    async setHourlyLimit(arg0: bigint, arg1: bigint): Promise<void> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.setHourlyLimit(arg0, arg1);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.setHourlyLimit(arg0, arg1);
+            return result;
+        }
+    }
+    async setUserRole(arg0: Principal, arg1: UserRole): Promise<void> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.setUserRole(arg0, to_candid_UserRole_n1(this._uploadFile, this._downloadFile, arg1));
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.setUserRole(arg0, to_candid_UserRole_n1(this._uploadFile, this._downloadFile, arg1));
+            return result;
+        }
+    }
+}
+function from_candid_UserInfo_n8(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: _UserInfo): UserInfo {
+    return from_candid_record_n9(_uploadFile, _downloadFile, value);
 }
 function from_candid_UserRole_n4(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: _UserRole): UserRole {
     return from_candid_variant_n5(_uploadFile, _downloadFile, value);
 }
 function from_candid_opt_n3(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: [] | [_UserProfile]): UserProfile | null {
     return value.length === 0 ? null : value[0];
+}
+function from_candid_record_n9(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: {
+    principal: Principal;
+    name: string;
+    role: _UserRole;
+}): {
+    principal: Principal;
+    name: string;
+    role: UserRole;
+} {
+    return {
+        principal: value.principal,
+        name: value.name,
+        role: from_candid_UserRole_n4(_uploadFile, _downloadFile, value.role)
+    };
 }
 function from_candid_variant_n5(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: {
     admin: null;
@@ -379,6 +486,9 @@ function from_candid_variant_n5(_uploadFile: (file: ExternalBlob) => Promise<Uin
     guest: null;
 }): UserRole {
     return "admin" in value ? UserRole.admin : "user" in value ? UserRole.user : "guest" in value ? UserRole.guest : value;
+}
+function from_candid_vec_n7(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: Array<_UserInfo>): Array<UserInfo> {
+    return value.map((x)=>from_candid_UserInfo_n8(_uploadFile, _downloadFile, x));
 }
 function to_candid_UserRole_n1(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: UserRole): _UserRole {
     return to_candid_variant_n2(_uploadFile, _downloadFile, value);

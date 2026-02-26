@@ -28,7 +28,18 @@ export interface DaySummary {
   'date' : string,
   'icNames' : Array<string>,
 }
+export interface HourlyLimit { 'limit' : bigint, 'periodIndex' : bigint }
 export interface SlotUsage { 'count' : bigint, 'timeSlot' : string }
+export interface SlotUsageWithLimit {
+  'count' : bigint,
+  'limit' : bigint,
+  'timeSlot' : string,
+}
+export interface UserInfo {
+  'principal' : Principal,
+  'name' : string,
+  'role' : UserRole,
+}
 export interface UserProfile { 'name' : string }
 export type UserRole = { 'admin' : null } |
   { 'user' : null } |
@@ -45,14 +56,19 @@ export interface _SERVICE {
     [[] | [string], [] | [string]],
     Array<[string, DailyRecord]>
   >,
+  'getHourlyLimits' : ActorMethod<[], Array<HourlyLimit>>,
   'getRemainingSlots' : ActorMethod<[], bigint>,
   'getSlotUsage' : ActorMethod<[], Array<SlotUsage>>,
+  'getSlotUsageWithLimits' : ActorMethod<[], Array<SlotUsageWithLimit>>,
   'getSummary' : ActorMethod<[], Array<DaySummary>>,
   'getUserProfile' : ActorMethod<[Principal], [] | [UserProfile]>,
   'isCallerAdmin' : ActorMethod<[], boolean>,
+  'listAllUsers' : ActorMethod<[], Array<UserInfo>>,
   'removeApproval' : ActorMethod<[bigint], undefined>,
   'saveCallerUserProfile' : ActorMethod<[UserProfile], undefined>,
   'setDailyCap' : ActorMethod<[bigint], undefined>,
+  'setHourlyLimit' : ActorMethod<[bigint, bigint], undefined>,
+  'setUserRole' : ActorMethod<[Principal, UserRole], undefined>,
 }
 export declare const idlService: IDL.ServiceClass;
 export declare const idlInitArgs: IDL.Type[];

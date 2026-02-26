@@ -19,6 +19,7 @@ export default [
     ignores: [
       "**/backend.ts",
       "**/backend.d.ts",
+      "**/declarations/**",
       "dist/**",
       "node_modules/**",
       "build/**",
