@@ -19,9 +19,9 @@ import {
   useRemoveApproval,
 } from "@/hooks/useQueries";
 import { cn } from "@/lib/utils";
-import { Clock, Loader2, Plus, Trash2, UserX } from "lucide-react";
+import { ArrowDownAZ, Clock, Loader2, Plus, Trash2, UserX } from "lucide-react";
 import type React from "react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
 const HOURS = [
@@ -158,10 +158,28 @@ export default function Dashboard() {
   const addApprovalMutation = useAddApproval();
   const removeApprovalMutation = useRemoveApproval();
 
+  // Sort state for approvals list
+  const [sortBy, setSortBy] = useState<"startTime" | "icName">("startTime");
+
   // Add approval form
   const [icName, setIcName] = useState("");
   const [selectedStartHour, setSelectedStartHour] = useState("");
   const [selectedEndHour, setSelectedEndHour] = useState("");
+
+  // Sorted approvals
+  const sortedApprovals = useMemo(() => {
+    const copy = [...approvals];
+    if (sortBy === "icName") {
+      copy.sort((a, b) => a.icName.localeCompare(b.icName));
+    } else {
+      // sort by start hour index
+      copy.sort(
+        (a, b) =>
+          HOURS.indexOf(a.startHour ?? "") - HOURS.indexOf(b.startHour ?? ""),
+      );
+    }
+    return copy;
+  }, [approvals, sortBy]);
 
   // Build a slot usage map for O(1) lookups (keyed by SLOT_PERIODS strings)
   const slotUsageMap = new Map<string, { count: number; limit: number }>(
@@ -418,13 +436,35 @@ export default function Dashboard() {
         {/* Approvals list */}
         <Card className="lg:col-span-3 shadow-card">
           <CardHeader className="pb-3">
-            <CardTitle className="text-base flex items-center justify-between">
+            <CardTitle className="text-base flex items-center justify-between gap-2">
               <span>Today's Approved Exclusions</span>
-              {!approvalsLoading && approvals.length > 0 && (
-                <Badge variant="secondary" className="font-mono text-xs">
-                  {approvals.length}
-                </Badge>
-              )}
+              <div className="flex items-center gap-1.5 ml-auto">
+                {!approvalsLoading && approvals.length > 0 && (
+                  <Badge variant="secondary" className="font-mono text-xs">
+                    {approvals.length}
+                  </Badge>
+                )}
+                <Button
+                  variant={sortBy === "startTime" ? "secondary" : "ghost"}
+                  size="sm"
+                  className="h-7 gap-1 text-xs px-2"
+                  onClick={() => setSortBy("startTime")}
+                  title="Sort by start time"
+                >
+                  <Clock className="h-3 w-3" />
+                  Time
+                </Button>
+                <Button
+                  variant={sortBy === "icName" ? "secondary" : "ghost"}
+                  size="sm"
+                  className="h-7 gap-1 text-xs px-2"
+                  onClick={() => setSortBy("icName")}
+                  title="Sort by IC name"
+                >
+                  <ArrowDownAZ className="h-3 w-3" />
+                  Name
+                </Button>
+              </div>
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -446,7 +486,7 @@ export default function Dashboard() {
               </div>
             ) : (
               <div className="divide-y divide-border/60">
-                {approvals.map((entry) => (
+                {sortedApprovals.map((entry) => (
                   <div
                     key={entry.entryId.toString()}
                     className="flex items-center gap-3 py-3 group"
