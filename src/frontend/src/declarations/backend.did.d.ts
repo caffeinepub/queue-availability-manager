@@ -13,6 +13,8 @@ import type { Principal } from '@icp-sdk/core/principal';
 export interface ApprovalEntry {
   'endHour' : string,
   'icName' : string,
+  'createdBy' : Principal,
+  'exclusionDate' : string,
   'entryId' : bigint,
   'timestampNs' : bigint,
   'startHour' : string,
@@ -46,13 +48,17 @@ export type UserRole = { 'admin' : null } |
   { 'guest' : null };
 export interface _SERVICE {
   '_initializeAccessControlWithSecret' : ActorMethod<[string], undefined>,
-  'addApproval' : ActorMethod<[string, string, string, string], ApprovalEntry>,
+  'addApproval' : ActorMethod<
+    [string, string, string, string, string],
+    ApprovalEntry
+  >,
   'assignCallerUserRole' : ActorMethod<[Principal, UserRole], undefined>,
   'deleteUser' : ActorMethod<[Principal], undefined>,
   'getCallerUserProfile' : ActorMethod<[], [] | [UserProfile]>,
   'getCallerUserRole' : ActorMethod<[], UserRole>,
   'getDailyApprovals' : ActorMethod<[], Array<ApprovalEntry>>,
   'getDailyCap' : ActorMethod<[], bigint>,
+  'getFutureApprovals' : ActorMethod<[], Array<ApprovalEntry>>,
   'getHistory' : ActorMethod<
     [[] | [string], [] | [string]],
     Array<[string, DailyRecord]>

@@ -141,17 +141,26 @@ export function useAddApproval() {
       managerName,
       startHour,
       endHour,
+      exclusionDate,
     }: {
       icName: string;
       managerName: string;
       startHour: string;
       endHour: string;
+      exclusionDate: string;
     }) => {
       if (!actor) throw new Error("Actor not available");
-      return actor.addApproval(icName, managerName, startHour, endHour);
+      return actor.addApproval(
+        icName,
+        managerName,
+        startHour,
+        endHour,
+        exclusionDate,
+      );
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["dailyApprovals"] });
+      queryClient.invalidateQueries({ queryKey: ["futureApprovals"] });
       queryClient.invalidateQueries({ queryKey: ["remainingSlots"] });
       queryClient.invalidateQueries({ queryKey: ["slotUsage"] });
       queryClient.invalidateQueries({ queryKey: ["slotUsageWithLimits"] });
@@ -183,10 +192,24 @@ export function useRemoveApproval() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["dailyApprovals"] });
+      queryClient.invalidateQueries({ queryKey: ["futureApprovals"] });
       queryClient.invalidateQueries({ queryKey: ["remainingSlots"] });
       queryClient.invalidateQueries({ queryKey: ["slotUsage"] });
       queryClient.invalidateQueries({ queryKey: ["slotUsageWithLimits"] });
     },
+  });
+}
+
+export function useGetFutureApprovals() {
+  const { actor, isFetching } = useActor();
+  const { isInitializing } = useInternetIdentity();
+  return useQuery<ApprovalEntry[]>({
+    queryKey: ["futureApprovals"],
+    queryFn: async () => {
+      if (!actor) return [];
+      return actor.getFutureApprovals();
+    },
+    enabled: !!actor && !isFetching && !isInitializing,
   });
 }
 

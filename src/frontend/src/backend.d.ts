@@ -41,6 +41,8 @@ export interface UserProfile {
 export interface ApprovalEntry {
     endHour: string;
     icName: string;
+    createdBy: Principal;
+    exclusionDate: string;
     entryId: bigint;
     timestampNs: bigint;
     startHour: string;
@@ -52,13 +54,14 @@ export enum UserRole {
     guest = "guest"
 }
 export interface backendInterface {
-    addApproval(icName: string, managerName: string, startHour: string, endHour: string): Promise<ApprovalEntry>;
+    addApproval(icName: string, managerName: string, startHour: string, endHour: string, exclusionDate: string): Promise<ApprovalEntry>;
     assignCallerUserRole(user: Principal, role: UserRole): Promise<void>;
     deleteUser(user: Principal): Promise<void>;
     getCallerUserProfile(): Promise<UserProfile | null>;
     getCallerUserRole(): Promise<UserRole>;
     getDailyApprovals(): Promise<Array<ApprovalEntry>>;
     getDailyCap(): Promise<bigint>;
+    getFutureApprovals(): Promise<Array<ApprovalEntry>>;
     getHistory(startDate: string | null, endDate: string | null): Promise<Array<[string, DailyRecord]>>;
     getHourlyLimits(): Promise<Array<HourlyLimit>>;
     getRemainingSlots(): Promise<bigint>;

@@ -15,11 +15,21 @@ import {
   useAddApproval,
   useGetCallerUserProfile,
   useGetDailyApprovals,
+  useGetFutureApprovals,
   useGetSlotUsageWithLimits,
   useRemoveApproval,
 } from "@/hooks/useQueries";
 import { cn } from "@/lib/utils";
-import { ArrowDownAZ, Clock, Loader2, Plus, Trash2, UserX } from "lucide-react";
+import {
+  ArrowDownAZ,
+  Calendar,
+  CalendarClock,
+  Clock,
+  Loader2,
+  Plus,
+  Trash2,
+  UserX,
+} from "lucide-react";
 import type React from "react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -55,6 +65,8 @@ const SLOT_PERIODS = [
   "6 PM - 7 PM",
 ];
 
+const todayString = new Date().toISOString().slice(0, 10);
+
 function formatTimestamp(ts: bigint): string {
   const ms = Number(ts / BigInt(1_000_000));
   const date = new Date(ms);
@@ -66,6 +78,19 @@ function formatDate(date: Date): string {
     weekday: "long",
     year: "numeric",
     month: "long",
+    day: "numeric",
+  });
+}
+
+/** Format a YYYY-MM-DD string as a human-readable date, e.g. "Mon, Mar 3, 2026" */
+function formatExclusionDate(dateStr: string): string {
+  // Parse as local date to avoid timezone shift
+  const [year, month, day] = dateStr.split("-").map(Number);
+  const d = new Date(year, month - 1, day);
+  return d.toLocaleDateString([], {
+    weekday: "short",
+    year: "numeric",
+    month: "short",
     day: "numeric",
   });
 }
@@ -150,6 +175,8 @@ export default function Dashboard() {
   // Data
   const { data: approvals = [], isLoading: approvalsLoading } =
     useGetDailyApprovals();
+  const { data: futureApprovals = [], isLoading: futureApprovalsLoading } =
+    useGetFutureApprovals();
   const { data: slotUsageData = [], isLoading: slotUsageLoading } =
     useGetSlotUsageWithLimits();
   const { data: userProfile } = useGetCallerUserProfile();
@@ -163,10 +190,11 @@ export default function Dashboard() {
 
   // Add approval form
   const [icName, setIcName] = useState("");
+  const [exclusionDate, setExclusionDate] = useState<string>(todayString);
   const [selectedStartHour, setSelectedStartHour] = useState("");
   const [selectedEndHour, setSelectedEndHour] = useState("");
 
-  // Sorted approvals
+  // Sorted today's approvals
   const sortedApprovals = useMemo(() => {
     const copy = [...approvals];
     if (sortBy === "icName") {
@@ -181,6 +209,27 @@ export default function Dashboard() {
     return copy;
   }, [approvals, sortBy]);
 
+  // Future approvals sorted by date asc, then start hour within date
+  const groupedFutureApprovals = useMemo(() => {
+    const sorted = [...futureApprovals].sort((a, b) => {
+      if (a.exclusionDate !== b.exclusionDate) {
+        return a.exclusionDate.localeCompare(b.exclusionDate);
+      }
+      return (
+        HOURS.indexOf(a.startHour ?? "") - HOURS.indexOf(b.startHour ?? "")
+      );
+    });
+
+    // Group by date
+    const groups = new Map<string, typeof sorted>();
+    for (const entry of sorted) {
+      const date = entry.exclusionDate || "unknown";
+      if (!groups.has(date)) groups.set(date, []);
+      groups.get(date)!.push(entry);
+    }
+    return groups;
+  }, [futureApprovals]);
+
   // Build a slot usage map for O(1) lookups (keyed by SLOT_PERIODS strings)
   const slotUsageMap = new Map<string, { count: number; limit: number }>(
     slotUsageData.map((s) => [
@@ -188,6 +237,9 @@ export default function Dashboard() {
       { count: Number(s.count), limit: Number(s.limit) },
     ]),
   );
+
+  // Whether the selected date is today (affects capacity check)
+  const isToday = exclusionDate === todayString;
 
   const handleAddApproval = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -204,17 +256,19 @@ export default function Dashboard() {
       return;
     }
 
-    // Check capacity for every hour in the range using per-slot limits
-    const startIdx = HOURS.indexOf(selectedStartHour);
-    const endIdx = HOURS.indexOf(selectedEndHour);
-    for (let i = startIdx; i < endIdx; i++) {
-      const period = SLOT_PERIODS[i];
-      const entry = slotUsageMap.get(period) ?? { count: 0, limit: 10 };
-      if (entry.count >= entry.limit) {
-        toast.error(
-          `The ${period} slot is full (${entry.count}/${entry.limit})`,
-        );
-        return;
+    // Only check capacity for today's entries (future dates may not have usage yet)
+    if (isToday) {
+      const startIdx = HOURS.indexOf(selectedStartHour);
+      const endIdx = HOURS.indexOf(selectedEndHour);
+      for (let i = startIdx; i < endIdx; i++) {
+        const period = SLOT_PERIODS[i];
+        const entry = slotUsageMap.get(period) ?? { count: 0, limit: 10 };
+        if (entry.count >= entry.limit) {
+          toast.error(
+            `The ${period} slot is full (${entry.count}/${entry.limit})`,
+          );
+          return;
+        }
       }
     }
 
@@ -225,9 +279,16 @@ export default function Dashboard() {
         managerName,
         startHour: selectedStartHour,
         endHour: selectedEndHour,
+        exclusionDate,
       });
-      toast.success(`${icName.trim()} added to queue exclusions`);
+      const isFuture = exclusionDate > todayString;
+      toast.success(
+        isFuture
+          ? `${icName.trim()} added as a future exclusion for ${formatExclusionDate(exclusionDate)}`
+          : `${icName.trim()} added to queue exclusions`,
+      );
       setIcName("");
+      setExclusionDate(todayString);
       setSelectedStartHour("");
       setSelectedEndHour("");
     } catch (err) {
@@ -287,13 +348,11 @@ export default function Dashboard() {
         {/* Add approval form */}
         <Card className="lg:col-span-2 shadow-card">
           <CardHeader className="pb-3">
-            <CardTitle className="text-base flex items-center gap-2">
-              <Plus className="h-4 w-4" />
-              Add Queue Exclusion
-            </CardTitle>
+            <CardTitle className="text-base">Add Queue Exclusion</CardTitle>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleAddApproval} className="space-y-3">
+              {/* IC Name */}
               <div className="space-y-1.5">
                 <Label
                   htmlFor="ic-name"
@@ -309,7 +368,33 @@ export default function Dashboard() {
                   disabled={addApprovalMutation.isPending}
                 />
               </div>
-              <div className="grid grid-cols-2 gap-3">
+
+              {/* Exclusion Date */}
+              <div className="space-y-1.5">
+                <Label
+                  htmlFor="exclusion-date"
+                  className="text-xs font-medium text-muted-foreground uppercase tracking-wide"
+                >
+                  Exclusion Date
+                </Label>
+                <Input
+                  id="exclusion-date"
+                  type="date"
+                  value={exclusionDate}
+                  min={todayString}
+                  onChange={(e) => setExclusionDate(e.target.value)}
+                  disabled={addApprovalMutation.isPending}
+                />
+                {exclusionDate > todayString && (
+                  <p className="text-xs text-primary font-medium flex items-center gap-1">
+                    <CalendarClock className="h-3 w-3" />
+                    Future exclusion — {formatExclusionDate(exclusionDate)}
+                  </p>
+                )}
+              </div>
+
+              {/* Time range — stacked */}
+              <div className="space-y-3">
                 <div className="space-y-1.5">
                   <Label
                     htmlFor="start-hour"
@@ -366,16 +451,19 @@ export default function Dashboard() {
                         (hour) => {
                           const startIdx = HOURS.indexOf(selectedStartHour);
                           const endIdx = HOURS.indexOf(hour);
-                          const hasFullSlot = Array.from(
-                            { length: endIdx - startIdx },
-                            (_, i) => SLOT_PERIODS[startIdx + i],
-                          ).some((p) => {
-                            const e = slotUsageMap.get(p) ?? {
-                              count: 0,
-                              limit: 10,
-                            };
-                            return e.count >= e.limit;
-                          });
+                          // Only show capacity warnings for today's entries
+                          const hasFullSlot =
+                            isToday &&
+                            Array.from(
+                              { length: endIdx - startIdx },
+                              (_, i) => SLOT_PERIODS[startIdx + i],
+                            ).some((p) => {
+                              const e = slotUsageMap.get(p) ?? {
+                                count: 0,
+                                limit: 10,
+                              };
+                              return e.count >= e.limit;
+                            });
                           return (
                             <SelectItem
                               key={hour}
@@ -399,6 +487,7 @@ export default function Dashboard() {
                   </Select>
                 </div>
               </div>
+
               {userProfile?.name && (
                 <p className="text-xs text-muted-foreground">
                   Approving as{" "}
@@ -433,7 +522,7 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
-        {/* Approvals list */}
+        {/* Today's Approvals list */}
         <Card className="lg:col-span-3 shadow-card">
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center justify-between gap-2">
@@ -536,6 +625,110 @@ export default function Dashboard() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Future Approved Exclusions */}
+      <Card className="shadow-xs">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            <CalendarClock className="h-4 w-4" />
+            Future Approved Exclusions
+            {!futureApprovalsLoading && futureApprovals.length > 0 && (
+              <Badge variant="secondary" className="font-mono text-xs ml-1">
+                {futureApprovals.length}
+              </Badge>
+            )}
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {futureApprovalsLoading ? (
+            <div className="space-y-2">
+              {[1, 2].map((i) => (
+                <Skeleton key={i} className="h-14 w-full" />
+              ))}
+            </div>
+          ) : futureApprovals.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-8 text-center">
+              <Calendar className="h-9 w-9 text-muted-foreground/30 mb-3" />
+              <p className="text-sm font-medium text-muted-foreground">
+                No future exclusions scheduled
+              </p>
+              <p className="text-xs text-muted-foreground/60 mt-1">
+                Set a future date in the form above to schedule ahead
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {Array.from(groupedFutureApprovals.entries()).map(
+                ([date, entries]) => (
+                  <div key={date}>
+                    {/* Date header */}
+                    <div className="flex items-center gap-2 mb-2">
+                      <Calendar className="h-3.5 w-3.5 text-primary" />
+                      <span className="text-xs font-semibold text-primary uppercase tracking-wide">
+                        {formatExclusionDate(date)}
+                      </span>
+                      <div className="flex-1 h-px bg-border/50" />
+                      <Badge
+                        variant="outline"
+                        className="text-[10px] px-1.5 py-0 h-4 font-mono"
+                      >
+                        {entries.length}
+                      </Badge>
+                    </div>
+
+                    {/* Entries for this date */}
+                    <div className="divide-y divide-border/40 pl-5">
+                      {entries.map((entry) => (
+                        <div
+                          key={entry.entryId.toString()}
+                          className="flex items-center gap-3 py-2.5 group"
+                        >
+                          <div className="flex-1 min-w-0">
+                            <p className="font-medium text-sm truncate">
+                              {entry.icName}
+                            </p>
+                            <p className="text-xs text-muted-foreground truncate">
+                              Approved by{" "}
+                              <span className="font-medium text-foreground/70">
+                                {entry.managerName}
+                              </span>
+                            </p>
+                            {entry.startHour && entry.endHour && (
+                              <Badge
+                                variant="outline"
+                                className="mt-1 text-[10px] px-1.5 py-0 h-4 font-normal gap-1"
+                              >
+                                <Clock className="h-2.5 w-2.5" />
+                                {entry.startHour} – {entry.endHour}
+                              </Badge>
+                            )}
+                          </div>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive"
+                            onClick={() =>
+                              handleRemove(entry.entryId, entry.icName)
+                            }
+                            disabled={removeApprovalMutation.isPending}
+                            aria-label={`Remove ${entry.icName}`}
+                          >
+                            {removeApprovalMutation.isPending ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Trash2 className="h-4 w-4" />
+                            )}
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ),
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

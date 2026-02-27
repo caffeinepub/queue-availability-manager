@@ -2,7 +2,6 @@ import Map "mo:core/Map";
 import Text "mo:core/Text";
 import Time "mo:core/Time";
 import Nat "mo:core/Nat";
-import Array "mo:core/Array";
 import Int "mo:core/Int";
 import Order "mo:core/Order";
 import Runtime "mo:core/Runtime";
@@ -10,7 +9,9 @@ import Iter "mo:core/Iter";
 import List "mo:core/List";
 import Principal "mo:core/Principal";
 import MixinAuthorization "authorization/MixinAuthorization";
+
 import AccessControl "authorization/access-control";
+
 
 actor {
   let nanosecondToSeconds = 1_000_000_000;
@@ -35,6 +36,8 @@ actor {
     timestampNs : Int;
     startHour : Text;
     endHour : Text;
+    exclusionDate : Text;
+    createdBy : Principal;
   };
 
   type DailyRecord = { cap : Nat; approvals : [ApprovalEntry] };
@@ -135,32 +138,59 @@ actor {
     let today = nanosecondsToDateString(Time.now());
     let lastRecordedDay = nanosecondsToDateString(state.lastUpdateNs);
     if (today != lastRecordedDay) {
-      let archivedDay = { cap = state.dailyCap; approvals = state.dailyApprovals.toArray() };
+      let filteredApprovals = List.empty<ApprovalEntry>();
+      for (entry in state.dailyApprovals.values()) {
+        if (compareDateStrings(entry.exclusionDate, today) == #greater) {
+          filteredApprovals.add(entry);
+        };
+      };
+      let archivedDay = { cap = state.dailyCap; approvals = state.dailyApprovals.filter(func(e) { e.exclusionDate != today }).toArray() };
       historyStore.add(lastRecordedDay, archivedDay);
       state.lastUpdateNs := Time.now();
       state.dailyApprovals.clear();
+      for (entry in filteredApprovals.values()) { state.dailyApprovals.add(entry) };
     };
   };
 
   public query ({ caller }) func getDailyCap() : async Nat {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) Runtime.trap("Unauthorized");
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can view daily cap");
+    };
     state.dailyCap;
   };
 
   public query ({ caller }) func getDailyApprovals() : async [ApprovalEntry] {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) Runtime.trap("Unauthorized");
-    state.dailyApprovals.toArray();
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can view daily approvals");
+    };
+    let today = nanosecondsToDateString(Time.now());
+    let filteredApprovals = state.dailyApprovals.toArray().filter(func(entry) { entry.exclusionDate == today });
+    filteredApprovals;
+  };
+
+  public query ({ caller }) func getFutureApprovals() : async [ApprovalEntry] {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can view future approvals");
+    };
+    let today = nanosecondsToDateString(Time.now());
+    let filteredApprovals = state.dailyApprovals.toArray().filter(func(entry) { compareDateStrings(entry.exclusionDate, today) == #greater });
+    filteredApprovals;
   };
 
   public query ({ caller }) func getRemainingSlots() : async Nat {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) Runtime.trap("Unauthorized");
-    let numApprovals = state.dailyApprovals.size();
-    if (numApprovals >= state.dailyCap) { return 0 };
-    state.dailyCap - numApprovals;
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can view remaining slots");
+    };
+    let today = nanosecondsToDateString(Time.now());
+    let todayApprovals = state.dailyApprovals.toArray().filter(func(entry) { entry.exclusionDate == today });
+    if (todayApprovals.size() >= state.dailyCap) { return 0 };
+    state.dailyCap - todayApprovals.size();
   };
 
   public query ({ caller }) func getHistory(startDate : ?Text, endDate : ?Text) : async [(Text, DailyRecord)] {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) Runtime.trap("Unauthorized");
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can view history");
+    };
     let filteredIter = historyStore.entries().filter(func((date, _)) {
       let afterStart = switch (startDate) { case (null) { true }; case (?start) { compareDateStrings(date, start) != #less } };
       let beforeEnd = switch (endDate) { case (null) { true }; case (?end) { compareDateStrings(date, end) != #greater } };
@@ -170,23 +200,29 @@ actor {
   };
 
   public query ({ caller }) func getSummary() : async [DaySummary] {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) Runtime.trap("Unauthorized");
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can view summary");
+    };
     let summaries = List.empty<DaySummary>();
     for ((date, record) in historyStore.entries()) {
       summaries.add({ date; cap = record.cap; countApproved = record.approvals.size(); icNames = record.approvals.map(func(e) { e.icName }) });
     };
-    let todayApprovals = state.dailyApprovals.toArray();
-    summaries.add({ date = nanosecondsToDateString(Time.now()); cap = state.dailyCap; countApproved = todayApprovals.size(); icNames = todayApprovals.map(func(e) { e.icName }) });
+    let today = nanosecondsToDateString(Time.now());
+    let todayApprovals = state.dailyApprovals.toArray().filter(func(entry) { entry.exclusionDate == today });
+    summaries.add({ date = today; cap = state.dailyCap; countApproved = todayApprovals.size(); icNames = todayApprovals.map(func(e) { e.icName }) });
     summaries.toArray();
   };
 
   public query ({ caller }) func getSlotUsage() : async [SlotUsage] {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) Runtime.trap("Unauthorized");
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can view slot usage");
+    };
     getSlotUsageInternal();
   };
 
   func getSlotUsageInternal() : [SlotUsage] {
-    let approvalsArray = state.dailyApprovals.toArray();
+    let today = nanosecondsToDateString(Time.now());
+    let approvalsArray = state.dailyApprovals.toArray().filter(func(entry) { entry.exclusionDate == today });
     let latestIndex = displayPeriods.size() - 1 : Nat;
     let results = List.empty<SlotUsage>();
     var i = 0 : Nat;
@@ -203,14 +239,18 @@ actor {
   };
 
   public query ({ caller }) func getHourlyLimits() : async [HourlyLimit] {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) Runtime.trap("Unauthorized");
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can view hourly limits");
+    };
     let limits = List.empty<HourlyLimit>();
     for ((periodIndex, limit) in hourlyLimits.entries()) { limits.add({ periodIndex; limit }) };
     limits.toArray();
   };
 
   public query ({ caller }) func getSlotUsageWithLimits() : async [SlotUsageWithLimit] {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) Runtime.trap("Unauthorized");
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can view slot usage with limits");
+    };
     let slotUsages = getSlotUsageInternal();
     let results = List.empty<SlotUsageWithLimit>();
     for (slot in slotUsages.values()) {
@@ -222,19 +262,25 @@ actor {
   };
 
   public shared ({ caller }) func setDailyCap(cap : Nat) : async () {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) Runtime.trap("Unauthorized");
+    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
+      Runtime.trap("Unauthorized: Only admins can set daily cap");
+    };
     checkAndResetDay();
     state.dailyCap := cap;
   };
 
   public shared ({ caller }) func setHourlyLimit(periodIndex : Nat, limit : Nat) : async () {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) Runtime.trap("Unauthorized");
+    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
+      Runtime.trap("Unauthorized: Only admins can set hourly limits");
+    };
     if (periodIndex >= displayPeriods.size()) Runtime.trap("Invalid period index");
     hourlyLimits.add(periodIndex, limit);
   };
 
-  public shared ({ caller }) func addApproval(icName : Text, managerName : Text, startHour : Text, endHour : Text) : async ApprovalEntry {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) Runtime.trap("Unauthorized");
+  public shared ({ caller }) func addApproval(icName : Text, managerName : Text, startHour : Text, endHour : Text, exclusionDate : Text) : async ApprovalEntry {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can add approvals");
+    };
     checkAndResetDay();
     let approvalsArray = state.dailyApprovals.toArray();
     let startIndex = switch (findHourIndex(startHour)) { case (?idx) { idx }; case (null) { Runtime.trap("Invalid start hour: " # startHour) } };
@@ -242,40 +288,68 @@ actor {
     if (endIndex <= startIndex) Runtime.trap("End hour must be later than start hour");
     for (periodIndex in Nat.range(startIndex, endIndex)) {
       let periodCount = approvalsArray.filter(func(entry) {
+        if (entry.exclusionDate != exclusionDate) { return false };
         let es = findHourIndex(entry.startHour);
         let ee = findHourIndex(entry.endHour);
         switch (es, ee) { case (?s, ?e) { s <= periodIndex and e > periodIndex }; case (_) { false } };
       }).size();
       let periodLimit = switch (hourlyLimits.get(periodIndex)) { case (?l) { l }; case (null) { 10 } };
-      if (periodCount >= periodLimit) Runtime.trap("Period " # periodIndex.toText() # " is full");
+      if (periodCount >= periodLimit) Runtime.trap("Period " # periodIndex.toText() # " is full for " # exclusionDate);
     };
     for (entry in approvalsArray.values()) {
-      if (Text.equal(entry.icName, icName)) {
+      if (Text.equal(entry.icName, icName) and entry.exclusionDate == exclusionDate) {
         let entryStart = switch (findHourIndex(entry.startHour)) { case (?idx) { idx }; case (null) { Runtime.trap("Invalid start hour in existing entry: " # entry.startHour) } };
         let entryEnd = switch (findHourIndex(entry.endHour)) { case (?idx) { idx }; case (null) { Runtime.trap("Invalid end hour in existing entry: " # entry.endHour) } };
         if (startIndex < entryEnd and endIndex > entryStart) {
-          Runtime.trap(icName # " already has an approved exclusion that overlaps that time range (" # entry.startHour # " - " # entry.endHour # ")");
+          Runtime.trap(icName # "already has an approved exclusion that overlaps that time range (" # entry.startHour # " - " # entry.endHour # ") for " # exclusionDate);
         };
       };
     };
-    let newEntry : ApprovalEntry = { entryId = state.lastAssignedId; icName; managerName; timestampNs = Time.now(); startHour; endHour };
+    let newEntry : ApprovalEntry = { 
+      entryId = state.lastAssignedId; 
+      icName; 
+      managerName; 
+      timestampNs = Time.now(); 
+      startHour; 
+      endHour; 
+      exclusionDate;
+      createdBy = caller;
+    };
     state.dailyApprovals.add(newEntry);
     state.lastAssignedId += 1;
     newEntry;
   };
 
   public shared ({ caller }) func removeApproval(entryId : Nat) : async () {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) Runtime.trap("Unauthorized");
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can remove approvals");
+    };
+    
     let approvalsList = state.dailyApprovals.toArray();
+    let entryToRemove = approvalsList.filter(func(entry) { entry.entryId == entryId });
+    
+    if (entryToRemove.size() == 0) {
+      Runtime.trap("No entry found with id " # entryId.toText());
+    };
+    
+    // Authorization check: only the creator or an admin can remove an approval
+    let isAdmin = AccessControl.isAdmin(accessControlState, caller);
+    let isOwner = entryToRemove[0].createdBy == caller;
+    
+    if (not (isOwner or isAdmin)) {
+      Runtime.trap("Unauthorized: Only the creator or an admin can remove this approval");
+    };
+    
     let filteredApprovals = approvalsList.filter(func(entry) { entry.entryId != entryId });
-    if (approvalsList.size() == filteredApprovals.size()) Runtime.trap("No entry found with id " # entryId.toText());
     state.dailyApprovals.clear();
     for (entry in filteredApprovals.values()) { state.dailyApprovals.add(entry) };
     checkAndResetDay();
   };
 
   public query ({ caller }) func listAllUsers() : async [UserInfo] {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) Runtime.trap("Unauthorized");
+    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
+      Runtime.trap("Unauthorized: Only admins can list all users");
+    };
     let result = List.empty<UserInfo>();
     for ((principal, profile) in userProfiles.entries()) {
       let role = AccessControl.getUserRole(accessControlState, principal);
@@ -285,22 +359,30 @@ actor {
   };
 
   public shared ({ caller }) func setUserRole(user : Principal, role : AccessControl.UserRole) : async () {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) Runtime.trap("Unauthorized");
+    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
+      Runtime.trap("Unauthorized: Only admins can set user roles");
+    };
     AccessControl.assignRole(accessControlState, caller, user, role);
   };
 
   public query ({ caller }) func getCallerUserProfile() : async ?UserProfile {
-    if (caller.isAnonymous()) Runtime.trap("Anonymous principals cannot have profiles");
+    if (caller.isAnonymous()) {
+      Runtime.trap("Unauthorized: Anonymous principals cannot have profiles");
+    };
     userProfiles.get(caller);
   };
 
   public query ({ caller }) func getUserProfile(user : Principal) : async ?UserProfile {
-    if (caller != user and not AccessControl.isAdmin(accessControlState, caller)) Runtime.trap("Unauthorized");
+    if (caller != user and not AccessControl.isAdmin(accessControlState, caller)) {
+      Runtime.trap("Unauthorized: Can only view your own profile or be an admin");
+    };
     userProfiles.get(user);
   };
 
   public shared ({ caller }) func saveCallerUserProfile(profile : UserProfile) : async () {
-    if (caller.isAnonymous()) Runtime.trap("Anonymous principals cannot save profiles");
+    if (caller.isAnonymous()) {
+      Runtime.trap("Unauthorized: Anonymous principals cannot save profiles");
+    };
 
     let currentRole = AccessControl.getUserRole(accessControlState, caller);
     if (currentRole == #guest) {
@@ -314,9 +396,15 @@ actor {
   };
 
   public shared ({ caller }) func deleteUser(user : Principal) : async () {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) Runtime.trap("Unauthorized");
-    if (Principal.equal(caller, user)) Runtime.trap("Admins cannot delete themselves");
-    if (not userProfiles.containsKey(user)) Runtime.trap("User does not exist");
+    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
+      Runtime.trap("Unauthorized: Only admins can delete users");
+    };
+    if (Principal.equal(caller, user)) {
+      Runtime.trap("Admins cannot delete themselves");
+    };
+    if (not userProfiles.containsKey(user)) {
+      Runtime.trap("User does not exist");
+    };
     userProfiles.remove(user);
     AccessControl.assignRole(accessControlState, caller, user, #guest);
   };

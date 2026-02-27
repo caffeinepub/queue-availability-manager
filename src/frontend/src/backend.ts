@@ -123,6 +123,8 @@ export interface UserProfile {
 export interface ApprovalEntry {
     endHour: string;
     icName: string;
+    createdBy: Principal;
+    exclusionDate: string;
     entryId: bigint;
     timestampNs: bigint;
     startHour: string;
@@ -135,13 +137,14 @@ export enum UserRole {
 }
 export interface backendInterface {
     _initializeAccessControlWithSecret(userSecret: string): Promise<void>;
-    addApproval(icName: string, managerName: string, startHour: string, endHour: string): Promise<ApprovalEntry>;
+    addApproval(icName: string, managerName: string, startHour: string, endHour: string, exclusionDate: string): Promise<ApprovalEntry>;
     assignCallerUserRole(user: Principal, role: UserRole): Promise<void>;
     deleteUser(user: Principal): Promise<void>;
     getCallerUserProfile(): Promise<UserProfile | null>;
     getCallerUserRole(): Promise<UserRole>;
     getDailyApprovals(): Promise<Array<ApprovalEntry>>;
     getDailyCap(): Promise<bigint>;
+    getFutureApprovals(): Promise<Array<ApprovalEntry>>;
     getHistory(startDate: string | null, endDate: string | null): Promise<Array<[string, DailyRecord]>>;
     getHourlyLimits(): Promise<Array<HourlyLimit>>;
     getRemainingSlots(): Promise<bigint>;
@@ -174,17 +177,17 @@ export class Backend implements backendInterface {
             return result;
         }
     }
-    async addApproval(arg0: string, arg1: string, arg2: string, arg3: string): Promise<ApprovalEntry> {
+    async addApproval(arg0: string, arg1: string, arg2: string, arg3: string, arg4: string): Promise<ApprovalEntry> {
         if (this.processError) {
             try {
-                const result = await this.actor.addApproval(arg0, arg1, arg2, arg3);
+                const result = await this.actor.addApproval(arg0, arg1, arg2, arg3, arg4);
                 return result;
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
-            const result = await this.actor.addApproval(arg0, arg1, arg2, arg3);
+            const result = await this.actor.addApproval(arg0, arg1, arg2, arg3, arg4);
             return result;
         }
     }
@@ -269,6 +272,20 @@ export class Backend implements backendInterface {
             }
         } else {
             const result = await this.actor.getDailyCap();
+            return result;
+        }
+    }
+    async getFutureApprovals(): Promise<Array<ApprovalEntry>> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.getFutureApprovals();
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.getFutureApprovals();
             return result;
         }
     }

@@ -11,6 +11,8 @@ import { IDL } from '@icp-sdk/core/candid';
 export const ApprovalEntry = IDL.Record({
   'endHour' : IDL.Text,
   'icName' : IDL.Text,
+  'createdBy' : IDL.Principal,
+  'exclusionDate' : IDL.Text,
   'entryId' : IDL.Nat,
   'timestampNs' : IDL.Int,
   'startHour' : IDL.Text,
@@ -54,7 +56,7 @@ export const UserInfo = IDL.Record({
 export const idlService = IDL.Service({
   '_initializeAccessControlWithSecret' : IDL.Func([IDL.Text], [], []),
   'addApproval' : IDL.Func(
-      [IDL.Text, IDL.Text, IDL.Text, IDL.Text],
+      [IDL.Text, IDL.Text, IDL.Text, IDL.Text, IDL.Text],
       [ApprovalEntry],
       [],
     ),
@@ -64,6 +66,7 @@ export const idlService = IDL.Service({
   'getCallerUserRole' : IDL.Func([], [UserRole], ['query']),
   'getDailyApprovals' : IDL.Func([], [IDL.Vec(ApprovalEntry)], ['query']),
   'getDailyCap' : IDL.Func([], [IDL.Nat], ['query']),
+  'getFutureApprovals' : IDL.Func([], [IDL.Vec(ApprovalEntry)], ['query']),
   'getHistory' : IDL.Func(
       [IDL.Opt(IDL.Text), IDL.Opt(IDL.Text)],
       [IDL.Vec(IDL.Tuple(IDL.Text, DailyRecord))],
@@ -98,6 +101,8 @@ export const idlFactory = ({ IDL }) => {
   const ApprovalEntry = IDL.Record({
     'endHour' : IDL.Text,
     'icName' : IDL.Text,
+    'createdBy' : IDL.Principal,
+    'exclusionDate' : IDL.Text,
     'entryId' : IDL.Nat,
     'timestampNs' : IDL.Int,
     'startHour' : IDL.Text,
@@ -138,7 +143,7 @@ export const idlFactory = ({ IDL }) => {
   return IDL.Service({
     '_initializeAccessControlWithSecret' : IDL.Func([IDL.Text], [], []),
     'addApproval' : IDL.Func(
-        [IDL.Text, IDL.Text, IDL.Text, IDL.Text],
+        [IDL.Text, IDL.Text, IDL.Text, IDL.Text, IDL.Text],
         [ApprovalEntry],
         [],
       ),
@@ -148,6 +153,7 @@ export const idlFactory = ({ IDL }) => {
     'getCallerUserRole' : IDL.Func([], [UserRole], ['query']),
     'getDailyApprovals' : IDL.Func([], [IDL.Vec(ApprovalEntry)], ['query']),
     'getDailyCap' : IDL.Func([], [IDL.Nat], ['query']),
+    'getFutureApprovals' : IDL.Func([], [IDL.Vec(ApprovalEntry)], ['query']),
     'getHistory' : IDL.Func(
         [IDL.Opt(IDL.Text), IDL.Opt(IDL.Text)],
         [IDL.Vec(IDL.Tuple(IDL.Text, DailyRecord))],
