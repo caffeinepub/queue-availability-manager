@@ -1,25 +1,33 @@
 # Queue Availability Manager
 
 ## Current State
-The app has a full authorization system with roles: admin, user, guest. The first admin is seeded via a secret token (`CAFFEINE_ADMIN_TOKEN`), meaning a new user who logs in for the first time has no way to become admin unless they know that token. Users are created as #guest by default when they have no role assigned.
+
+A full-stack app for managing daily queue exclusions for ICs (Individual Contributors). Features include:
+- Adding/removing approved exclusions with IC name, manager name (auto-populated from login), start hour, and end hour (7 AM - 7 PM CT, hourly increments)
+- Per-hour capacity limits (default 10 per slot), configurable per hour
+- Slot availability grid (color-coded: green <70%, yellow 71-99%, red 100%)
+- History and reports of past days
+- User management: guest/user/admin roles, first-user auto-admin, user approval, deletion
+- Config page (admin only) showing user list and hourly limit settings
 
 ## Requested Changes (Diff)
 
 ### Add
-- Auto-seed the first logged-in user as admin if no admin has been assigned yet (no token required)
+- Nothing new to add
 
 ### Modify
-- `access-control.mo`: Update `initialize` to auto-assign #admin to the first non-anonymous caller when `adminAssigned` is false, bypassing the token check
-- `MixinAuthorization.mo`: Update `_initializeAccessControlWithSecret` to reflect that the first user is always admin (token check only applies after an admin already exists)
+- Fix critical bug in `nanosecondsToDateString`: currently returns raw seconds as a string (e.g. "1740614400"), causing `checkAndResetDay()` to trigger a reset and clear `dailyApprovals` on nearly every call (each second), because the comparison always differs. Must be changed to return a proper YYYY-MM-DD calendar date string computed from the Unix epoch using integer arithmetic.
 
 ### Remove
-- The token requirement for first-time admin assignment
+- Nothing to remove
 
 ## Implementation Plan
-1. Modify `access-control.mo` so that when `adminAssigned == false`, the first non-anonymous caller is automatically given #admin role regardless of the token
-2. Keep the token path for subsequent admin delegation (or remove it entirely since the Config page handles role changes)
 
-## UX Notes
-- The very first person to log in to the app will become admin automatically
-- All subsequent users log in as #guest and must be promoted by an admin via the Config page
-- No change to the frontend is needed
+1. Fix `nanosecondsToDateString` in `main.mo` to compute a real YYYY-MM-DD date string:
+   - Convert nanoseconds to seconds: `totalSeconds = nanoseconds / 1_000_000_000`
+   - Convert seconds to days since epoch: `days = totalSeconds / 86400`
+   - Walk through years from 1970, subtracting 365 or 366 days per year to find current year
+   - Walk through months with correct days-per-month (accounting for leap years) to find month
+   - Remaining days + 1 = day of month
+   - Return `"YYYY-MM-DD"` with zero-padded month and day
+2. All other logic (addApproval, removeApproval, slot usage, history) remains unchanged

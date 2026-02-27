@@ -68,9 +68,59 @@ actor {
   let hourlyLimits = Map.empty<Nat, Nat>();
   var adminAssigned = false;
 
+  func isLeapYear(year : Int) : Bool {
+    if (year % 400 == 0) { return true };
+    if (year % 100 == 0) { return false };
+    if (year % 4 == 0) { return true };
+    false;
+  };
+
+  func daysInMonth(month : Int, year : Int) : Int {
+    switch (month) {
+      case (1) { 31 };
+      case (2) { if (isLeapYear(year)) { 29 } else { 28 } };
+      case (3) { 31 };
+      case (4) { 30 };
+      case (5) { 31 };
+      case (6) { 30 };
+      case (7) { 31 };
+      case (8) { 31 };
+      case (9) { 30 };
+      case (10) { 31 };
+      case (11) { 30 };
+      case (12) { 31 };
+      case (_) { 0 };
+    };
+  };
+
+  func padZero(n : Int) : Text {
+    if (n < 10) { "0" # n.toText() } else { n.toText() };
+  };
+
   func nanosecondsToDateString(nanoseconds : Int) : Text {
-    let seconds = nanoseconds / nanosecondToSeconds;
-    seconds.toText();
+    let totalSeconds = nanoseconds / nanosecondToSeconds;
+    var days = totalSeconds / 86400;
+
+    var year = 1970;
+    var daysInYear = if (isLeapYear(year)) { 366 } else { 365 };
+
+    while (days >= daysInYear) {
+      days -= daysInYear;
+      year += 1;
+      daysInYear := if (isLeapYear(year)) { 366 } else { 365 };
+    };
+
+    var month = 1;
+    var daysInCurrentMonth = daysInMonth(month, year);
+
+    while (days >= daysInCurrentMonth) {
+      days -= daysInCurrentMonth;
+      month += 1;
+      daysInCurrentMonth := daysInMonth(month, year);
+    };
+
+    let day = days + 1;
+    year.toText() # "-" # padZero(month) # "-" # padZero(day);
   };
 
   func compareDateStrings(date1 : Text, date2 : Text) : Order.Order {
@@ -187,7 +237,6 @@ actor {
     if (not (AccessControl.hasPermission(accessControlState, caller, #user))) Runtime.trap("Unauthorized");
     checkAndResetDay();
     let approvalsArray = state.dailyApprovals.toArray();
-    if (approvalsArray.size() >= state.dailyCap) Runtime.trap("Daily cap reached");
     let startIndex = switch (findHourIndex(startHour)) { case (?idx) { idx }; case (null) { Runtime.trap("Invalid start hour: " # startHour) } };
     let endIndex = switch (findHourIndex(endHour)) { case (?idx) { idx }; case (null) { Runtime.trap("Invalid end hour: " # endHour) } };
     if (endIndex <= startIndex) Runtime.trap("End hour must be later than start hour");
@@ -199,6 +248,15 @@ actor {
       }).size();
       let periodLimit = switch (hourlyLimits.get(periodIndex)) { case (?l) { l }; case (null) { 10 } };
       if (periodCount >= periodLimit) Runtime.trap("Period " # periodIndex.toText() # " is full");
+    };
+    for (entry in approvalsArray.values()) {
+      if (Text.equal(entry.icName, icName)) {
+        let entryStart = switch (findHourIndex(entry.startHour)) { case (?idx) { idx }; case (null) { Runtime.trap("Invalid start hour in existing entry: " # entry.startHour) } };
+        let entryEnd = switch (findHourIndex(entry.endHour)) { case (?idx) { idx }; case (null) { Runtime.trap("Invalid end hour in existing entry: " # entry.endHour) } };
+        if (startIndex < entryEnd and endIndex > entryStart) {
+          Runtime.trap(icName # " already has an approved exclusion that overlaps that time range (" # entry.startHour # " - " # entry.endHour # ")");
+        };
+      };
     };
     let newEntry : ApprovalEntry = { entryId = state.lastAssignedId; icName; managerName; timestampNs = Time.now(); startHour; endHour };
     state.dailyApprovals.add(newEntry);
@@ -243,18 +301,14 @@ actor {
 
   public shared ({ caller }) func saveCallerUserProfile(profile : UserProfile) : async () {
     if (caller.isAnonymous()) Runtime.trap("Anonymous principals cannot save profiles");
-    
+
     let currentRole = AccessControl.getUserRole(accessControlState, caller);
     if (currentRole == #guest) {
       if (not adminAssigned) {
         AccessControl.assignRole(accessControlState, caller, caller, #admin);
         adminAssigned := true;
-      } else {
-        AccessControl.assignRole(accessControlState, caller, caller, #guest);
       };
     };
-
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) Runtime.trap("Unauthorized: Only users can save profiles");
 
     userProfiles.add(caller, profile);
   };

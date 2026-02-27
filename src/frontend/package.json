@@ -4,10 +4,8 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "setup": "pnpm i && dfx canister create backend && dfx generate backend && dfx deploy",
-    "start": "vite --port 3000",
-    "prebuild": "dfx generate backend",
     "build:skip-bindings": "vite build && pnpm copy:env",
+    "build": "vite build && pnpm copy:env",
     "copy:env": "cp env.json dist/",
     "typecheck": "tsc --noEmit --pretty",
     "check": "biome check src",

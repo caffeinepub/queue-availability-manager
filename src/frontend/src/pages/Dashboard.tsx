@@ -212,8 +212,15 @@ export default function Dashboard() {
       setIcName("");
       setSelectedStartHour("");
       setSelectedEndHour("");
-    } catch {
-      toast.error("Failed to add approval");
+    } catch (err) {
+      if (
+        err instanceof Error &&
+        err.message.includes("already has an approved exclusion")
+      ) {
+        toast.error(err.message);
+      } else {
+        toast.error("Failed to add approval");
+      }
     }
   };
 

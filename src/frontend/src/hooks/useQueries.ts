@@ -154,6 +154,7 @@ export function useAddApproval() {
       queryClient.invalidateQueries({ queryKey: ["dailyApprovals"] });
       queryClient.invalidateQueries({ queryKey: ["remainingSlots"] });
       queryClient.invalidateQueries({ queryKey: ["slotUsage"] });
+      queryClient.invalidateQueries({ queryKey: ["slotUsageWithLimits"] });
     },
   });
 }
