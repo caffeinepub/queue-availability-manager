@@ -1,5 +1,4 @@
-import React, { useState } from "react";
-import { Loader2, UserCircle2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -7,10 +6,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useSaveCallerUserProfile, useIsCallerAdmin } from "@/hooks/useQueries";
+import { useIsCallerAdmin, useSaveCallerUserProfile } from "@/hooks/useQueries";
+import { Loader2, UserCircle2 } from "lucide-react";
+import type React from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 
 interface ProfileSetupProps {
@@ -33,13 +34,19 @@ export default function ProfileSetup({ open }: ProfileSetupProps) {
       const { data: isAdmin } = await refetchIsAdmin();
 
       if (isAdmin) {
-        toast.success("Welcome, Admin! You're the first user — you have full access.", {
-          duration: 6000,
-        });
+        toast.success(
+          "Welcome, Admin! You're the first user — you have full access.",
+          {
+            duration: 6000,
+          },
+        );
       } else {
-        toast.info("Profile saved! Your account is pending approval. An admin will grant you access shortly.", {
-          duration: 8000,
-        });
+        toast.info(
+          "Profile saved! Your account is pending approval. An admin will grant you access shortly.",
+          {
+            duration: 8000,
+          },
+        );
       }
     } catch {
       toast.error("Failed to save profile");
@@ -48,21 +55,30 @@ export default function ProfileSetup({ open }: ProfileSetupProps) {
 
   return (
     <Dialog open={open}>
-      <DialogContent className="sm:max-w-md" onInteractOutside={(e) => e.preventDefault()}>
+      <DialogContent
+        className="sm:max-w-md"
+        onInteractOutside={(e) => e.preventDefault()}
+      >
         <DialogHeader>
           <div className="flex items-center gap-3 mb-1">
             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10">
               <UserCircle2 className="h-5 w-5 text-primary" />
             </div>
-            <DialogTitle className="text-lg">Welcome! Set up your profile</DialogTitle>
+            <DialogTitle className="text-lg">
+              Welcome! Set up your profile
+            </DialogTitle>
           </div>
           <DialogDescription>
-            Enter your name so colleagues can identify your approvals. You can change this later.
+            Enter your name so colleagues can identify your approvals. You can
+            change this later.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSave} className="space-y-4 pt-2">
           <div className="space-y-1.5">
-            <Label htmlFor="profile-name" className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+            <Label
+              htmlFor="profile-name"
+              className="text-xs font-medium text-muted-foreground uppercase tracking-wide"
+            >
               Your Name
             </Label>
             <Input

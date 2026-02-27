@@ -1,12 +1,8 @@
-import React, { useState } from "react";
-import { toast } from "sonner";
-import { Plus, Trash2, UserX, Loader2, Clock } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
 import {
   Select,
   SelectContent,
@@ -14,24 +10,49 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
-  useGetDailyApprovals,
   useAddApproval,
-  useRemoveApproval,
-  useGetSlotUsageWithLimits,
   useGetCallerUserProfile,
+  useGetDailyApprovals,
+  useGetSlotUsageWithLimits,
+  useRemoveApproval,
 } from "@/hooks/useQueries";
 import { cn } from "@/lib/utils";
+import { Clock, Loader2, Plus, Trash2, UserX } from "lucide-react";
+import type React from "react";
+import { useState } from "react";
+import { toast } from "sonner";
 
 const HOURS = [
-  "7 AM", "8 AM", "9 AM", "10 AM", "11 AM", "12 PM",
-  "1 PM", "2 PM", "3 PM", "4 PM", "5 PM", "6 PM", "7 PM",
+  "7 AM",
+  "8 AM",
+  "9 AM",
+  "10 AM",
+  "11 AM",
+  "12 PM",
+  "1 PM",
+  "2 PM",
+  "3 PM",
+  "4 PM",
+  "5 PM",
+  "6 PM",
+  "7 PM",
 ];
 
 const SLOT_PERIODS = [
-  "7 AM - 8 AM", "8 AM - 9 AM", "9 AM - 10 AM", "10 AM - 11 AM",
-  "11 AM - 12 PM", "12 PM - 1 PM", "1 PM - 2 PM", "2 PM - 3 PM",
-  "3 PM - 4 PM", "4 PM - 5 PM", "5 PM - 6 PM", "6 PM - 7 PM",
+  "7 AM - 8 AM",
+  "8 AM - 9 AM",
+  "9 AM - 10 AM",
+  "10 AM - 11 AM",
+  "11 AM - 12 PM",
+  "12 PM - 1 PM",
+  "1 PM - 2 PM",
+  "2 PM - 3 PM",
+  "3 PM - 4 PM",
+  "4 PM - 5 PM",
+  "5 PM - 6 PM",
+  "6 PM - 7 PM",
 ];
 
 function formatTimestamp(ts: bigint): string {
@@ -73,33 +94,38 @@ function SlotOverviewGrid({
         const { count, limit } = entry;
         const ratio = limit > 0 ? count / limit : 0;
         const isFull = ratio >= 1.0;
-        const isNearFull = ratio > 0.70 && ratio < 1.0;
+        const isNearFull = ratio > 0.7 && ratio < 1.0;
 
         const colorClass = isFull
           ? "border-danger/40 bg-danger/8 text-danger"
           : isNearFull
-          ? "border-warning/40 bg-warning/8 text-warning"
-          : "border-border/60 bg-card text-foreground";
+            ? "border-warning/40 bg-warning/8 text-warning"
+            : "border-border/60 bg-card text-foreground";
 
         const countColorClass = isFull
           ? "text-danger font-bold"
           : isNearFull
-          ? "text-warning font-semibold"
-          : "text-success font-semibold";
+            ? "text-warning font-semibold"
+            : "text-success font-semibold";
 
         return (
           <div
             key={slot}
             className={cn(
               "rounded-lg border px-2.5 py-2 flex flex-col gap-1 transition-colors",
-              colorClass
+              colorClass,
             )}
           >
             <span className="text-[10px] font-medium leading-tight text-muted-foreground">
               {slot}
             </span>
             <div className="flex items-center justify-between mt-auto">
-              <span className={cn("font-mono text-sm tabular-nums", countColorClass)}>
+              <span
+                className={cn(
+                  "font-mono text-sm tabular-nums",
+                  countColorClass,
+                )}
+              >
                 {count} / {limit}
               </span>
               {isFull && (
@@ -122,8 +148,10 @@ export default function Dashboard() {
   const today = new Date();
 
   // Data
-  const { data: approvals = [], isLoading: approvalsLoading } = useGetDailyApprovals();
-  const { data: slotUsageData = [], isLoading: slotUsageLoading } = useGetSlotUsageWithLimits();
+  const { data: approvals = [], isLoading: approvalsLoading } =
+    useGetDailyApprovals();
+  const { data: slotUsageData = [], isLoading: slotUsageLoading } =
+    useGetSlotUsageWithLimits();
   const { data: userProfile } = useGetCallerUserProfile();
 
   // Mutations
@@ -137,7 +165,10 @@ export default function Dashboard() {
 
   // Build a slot usage map for O(1) lookups (keyed by SLOT_PERIODS strings)
   const slotUsageMap = new Map<string, { count: number; limit: number }>(
-    slotUsageData.map((s) => [s.timeSlot, { count: Number(s.count), limit: Number(s.limit) }])
+    slotUsageData.map((s) => [
+      s.timeSlot,
+      { count: Number(s.count), limit: Number(s.limit) },
+    ]),
   );
 
   const handleAddApproval = async (e: React.FormEvent) => {
@@ -162,7 +193,9 @@ export default function Dashboard() {
       const period = SLOT_PERIODS[i];
       const entry = slotUsageMap.get(period) ?? { count: 0, limit: 10 };
       if (entry.count >= entry.limit) {
-        toast.error(`The ${period} slot is full (${entry.count}/${entry.limit})`);
+        toast.error(
+          `The ${period} slot is full (${entry.count}/${entry.limit})`,
+        );
         return;
       }
     }
@@ -197,8 +230,12 @@ export default function Dashboard() {
     <div className="space-y-6 animate-fade-up">
       {/* Header row */}
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Queue Dashboard</h1>
-        <p className="text-muted-foreground text-sm mt-0.5">{formatDate(today)}</p>
+        <h1 className="text-2xl font-semibold tracking-tight">
+          Queue Dashboard
+        </h1>
+        <p className="text-muted-foreground text-sm mt-0.5">
+          {formatDate(today)}
+        </p>
       </div>
 
       {/* Hourly Slot Overview */}
@@ -213,7 +250,10 @@ export default function Dashboard() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <SlotOverviewGrid slotUsageMap={slotUsageMap} isLoading={slotUsageLoading} />
+          <SlotOverviewGrid
+            slotUsageMap={slotUsageMap}
+            isLoading={slotUsageLoading}
+          />
         </CardContent>
       </Card>
 
@@ -230,7 +270,10 @@ export default function Dashboard() {
           <CardContent>
             <form onSubmit={handleAddApproval} className="space-y-3">
               <div className="space-y-1.5">
-                <Label htmlFor="ic-name" className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                <Label
+                  htmlFor="ic-name"
+                  className="text-xs font-medium text-muted-foreground uppercase tracking-wide"
+                >
                   IC Name
                 </Label>
                 <Input
@@ -243,14 +286,20 @@ export default function Dashboard() {
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
-                  <Label htmlFor="start-hour" className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                  <Label
+                    htmlFor="start-hour"
+                    className="text-xs font-medium text-muted-foreground uppercase tracking-wide"
+                  >
                     Start Time
                   </Label>
                   <Select
                     value={selectedStartHour}
                     onValueChange={(val) => {
                       setSelectedStartHour(val);
-                      if (selectedEndHour && HOURS.indexOf(selectedEndHour) <= HOURS.indexOf(val)) {
+                      if (
+                        selectedEndHour &&
+                        HOURS.indexOf(selectedEndHour) <= HOURS.indexOf(val)
+                      ) {
                         setSelectedEndHour("");
                       }
                     }}
@@ -269,42 +318,58 @@ export default function Dashboard() {
                   </Select>
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="end-hour" className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                  <Label
+                    htmlFor="end-hour"
+                    className="text-xs font-medium text-muted-foreground uppercase tracking-wide"
+                  >
                     End Time
                   </Label>
                   <Select
                     value={selectedEndHour}
                     onValueChange={setSelectedEndHour}
-                    disabled={addApprovalMutation.isPending || !selectedStartHour}
+                    disabled={
+                      addApprovalMutation.isPending || !selectedStartHour
+                    }
                   >
                     <SelectTrigger id="end-hour">
-                      <SelectValue placeholder={selectedStartHour ? "End…" : "Start first"} />
+                      <SelectValue
+                        placeholder={selectedStartHour ? "End…" : "Start first"}
+                      />
                     </SelectTrigger>
                     <SelectContent>
-                      {HOURS.slice(HOURS.indexOf(selectedStartHour) + 1).map((hour) => {
-                        const startIdx = HOURS.indexOf(selectedStartHour);
-                        const endIdx = HOURS.indexOf(hour);
-                        const hasFullSlot = Array.from({ length: endIdx - startIdx }, (_, i) => SLOT_PERIODS[startIdx + i])
-                          .some((p) => {
-                            const e = slotUsageMap.get(p) ?? { count: 0, limit: 10 };
+                      {HOURS.slice(HOURS.indexOf(selectedStartHour) + 1).map(
+                        (hour) => {
+                          const startIdx = HOURS.indexOf(selectedStartHour);
+                          const endIdx = HOURS.indexOf(hour);
+                          const hasFullSlot = Array.from(
+                            { length: endIdx - startIdx },
+                            (_, i) => SLOT_PERIODS[startIdx + i],
+                          ).some((p) => {
+                            const e = slotUsageMap.get(p) ?? {
+                              count: 0,
+                              limit: 10,
+                            };
                             return e.count >= e.limit;
                           });
-                        return (
-                          <SelectItem
-                            key={hour}
-                            value={hour}
-                            disabled={hasFullSlot}
-                            className={cn(hasFullSlot && "opacity-50")}
-                          >
-                            <span className="flex items-center justify-between gap-3 w-full">
-                              <span>{hour}</span>
-                              {hasFullSlot && (
-                                <span className="text-xs font-mono text-danger">Full slot in range</span>
-                              )}
-                            </span>
-                          </SelectItem>
-                        );
-                      })}
+                          return (
+                            <SelectItem
+                              key={hour}
+                              value={hour}
+                              disabled={hasFullSlot}
+                              className={cn(hasFullSlot && "opacity-50")}
+                            >
+                              <span className="flex items-center justify-between gap-3 w-full">
+                                <span>{hour}</span>
+                                {hasFullSlot && (
+                                  <span className="text-xs font-mono text-danger">
+                                    Full slot in range
+                                  </span>
+                                )}
+                              </span>
+                            </SelectItem>
+                          );
+                        },
+                      )}
                     </SelectContent>
                   </Select>
                 </div>
@@ -312,12 +377,19 @@ export default function Dashboard() {
               {userProfile?.name && (
                 <p className="text-xs text-muted-foreground">
                   Approving as{" "}
-                  <span className="font-medium text-foreground/70">{userProfile.name}</span>
+                  <span className="font-medium text-foreground/70">
+                    {userProfile.name}
+                  </span>
                 </p>
               )}
               <Button
                 type="submit"
-                disabled={addApprovalMutation.isPending || !icName.trim() || !selectedStartHour || !selectedEndHour}
+                disabled={
+                  addApprovalMutation.isPending ||
+                  !icName.trim() ||
+                  !selectedStartHour ||
+                  !selectedEndHour
+                }
                 className="w-full"
               >
                 {addApprovalMutation.isPending ? (
@@ -358,7 +430,9 @@ export default function Dashboard() {
             ) : approvals.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-10 text-center">
                 <UserX className="h-10 w-10 text-muted-foreground/40 mb-3" />
-                <p className="text-sm font-medium text-muted-foreground">No approvals yet today</p>
+                <p className="text-sm font-medium text-muted-foreground">
+                  No approvals yet today
+                </p>
                 <p className="text-xs text-muted-foreground/60 mt-1">
                   Approved queue exclusions will appear here
                 </p>
@@ -371,12 +445,18 @@ export default function Dashboard() {
                     className="flex items-center gap-3 py-3 group"
                   >
                     <div className="flex-1 min-w-0">
-                      <p className="font-medium text-sm truncate">{entry.icName}</p>
+                      <p className="font-medium text-sm truncate">
+                        {entry.icName}
+                      </p>
                       <p className="text-xs text-muted-foreground truncate">
                         Approved by{" "}
-                        <span className="font-medium text-foreground/70">{entry.managerName}</span>
+                        <span className="font-medium text-foreground/70">
+                          {entry.managerName}
+                        </span>
                         {" · "}
-                        <span className="font-mono">{formatTimestamp(entry.timestampNs)}</span>
+                        <span className="font-mono">
+                          {formatTimestamp(entry.timestampNs)}
+                        </span>
                       </p>
                       {entry.startHour && entry.endHour && (
                         <Badge

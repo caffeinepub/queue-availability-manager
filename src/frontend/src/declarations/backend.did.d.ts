@@ -48,6 +48,7 @@ export interface _SERVICE {
   '_initializeAccessControlWithSecret' : ActorMethod<[string], undefined>,
   'addApproval' : ActorMethod<[string, string, string, string], ApprovalEntry>,
   'assignCallerUserRole' : ActorMethod<[Principal, UserRole], undefined>,
+  'deleteUser' : ActorMethod<[Principal], undefined>,
   'getCallerUserProfile' : ActorMethod<[], [] | [UserProfile]>,
   'getCallerUserRole' : ActorMethod<[], UserRole>,
   'getDailyApprovals' : ActorMethod<[], Array<ApprovalEntry>>,

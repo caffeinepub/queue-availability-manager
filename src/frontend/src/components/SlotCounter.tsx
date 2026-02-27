@@ -1,5 +1,5 @@
-import React from "react";
 import { cn } from "@/lib/utils";
+import React from "react";
 
 interface SlotCounterProps {
   remaining: number;
@@ -37,7 +37,11 @@ const STATUS_CONFIG = {
   },
 } as const;
 
-export default function SlotCounter({ remaining, cap, className }: SlotCounterProps) {
+export default function SlotCounter({
+  remaining,
+  cap,
+  className,
+}: SlotCounterProps) {
   const status = getStatus(remaining, cap);
   const config = STATUS_CONFIG[status];
   const used = cap - remaining;
@@ -88,7 +92,7 @@ export default function SlotCounter({ remaining, cap, className }: SlotCounterPr
         <div
           className={cn(
             "absolute inset-0 flex flex-col items-center justify-center rounded-full",
-            config.bg
+            config.bg,
           )}
         >
           {status === "full" ? (
@@ -96,14 +100,19 @@ export default function SlotCounter({ remaining, cap, className }: SlotCounterPr
               className={cn(
                 "font-mono text-3xl font-bold tracking-tight",
                 config.text,
-                "animate-slot-pulse"
+                "animate-slot-pulse",
               )}
             >
               FULL
             </span>
           ) : (
             <>
-              <span className={cn("font-mono text-5xl font-bold tabular-nums leading-none", config.text)}>
+              <span
+                className={cn(
+                  "font-mono text-5xl font-bold tabular-nums leading-none",
+                  config.text,
+                )}
+              >
                 {remaining}
               </span>
               <span className="text-muted-foreground text-xs font-medium mt-1 tracking-widest uppercase">
@@ -117,7 +126,9 @@ export default function SlotCounter({ remaining, cap, className }: SlotCounterPr
       {/* Used / Cap label */}
       <div className="text-center">
         <p className="text-sm text-muted-foreground font-medium">
-          <span className="font-mono font-semibold text-foreground">{used}</span>
+          <span className="font-mono font-semibold text-foreground">
+            {used}
+          </span>
           {" of "}
           <span className="font-mono font-semibold text-foreground">{cap}</span>
           {" slots used"}

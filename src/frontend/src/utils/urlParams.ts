@@ -146,14 +146,14 @@ function clearParamFromHash(paramName: string): void {
   let newHash = routePath;
 
   if (newQueryString) {
-    newHash += "?" + newQueryString;
+    newHash += `?${newQueryString}`;
   }
 
   // If we still have content in the hash, keep it; otherwise remove the hash entirely
   const newUrl =
     window.location.pathname +
     window.location.search +
-    (newHash ? "#" + newHash : "");
+    (newHash ? `#${newHash}` : "");
   window.history.replaceState(null, "", newUrl);
 }
 

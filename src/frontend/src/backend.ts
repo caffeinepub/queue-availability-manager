@@ -137,6 +137,7 @@ export interface backendInterface {
     _initializeAccessControlWithSecret(userSecret: string): Promise<void>;
     addApproval(icName: string, managerName: string, startHour: string, endHour: string): Promise<ApprovalEntry>;
     assignCallerUserRole(user: Principal, role: UserRole): Promise<void>;
+    deleteUser(user: Principal): Promise<void>;
     getCallerUserProfile(): Promise<UserProfile | null>;
     getCallerUserRole(): Promise<UserRole>;
     getDailyApprovals(): Promise<Array<ApprovalEntry>>;
@@ -198,6 +199,20 @@ export class Backend implements backendInterface {
             }
         } else {
             const result = await this.actor.assignCallerUserRole(arg0, to_candid_UserRole_n1(this._uploadFile, this._downloadFile, arg1));
+            return result;
+        }
+    }
+    async deleteUser(arg0: Principal): Promise<void> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.deleteUser(arg0);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.deleteUser(arg0);
             return result;
         }
     }

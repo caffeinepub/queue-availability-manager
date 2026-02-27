@@ -1,7 +1,7 @@
-import React from "react";
-import { Loader2, LogIn, LayoutDashboard } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useInternetIdentity } from "@/hooks/useInternetIdentity";
+import { LayoutDashboard, Loader2, LogIn } from "lucide-react";
+import React from "react";
 
 export default function Login() {
   const { login, loginStatus } = useInternetIdentity();
@@ -18,7 +18,9 @@ export default function Login() {
             </div>
           </div>
           <div>
-            <h1 className="text-2xl font-bold tracking-tight">Queue Availability Manager</h1>
+            <h1 className="text-2xl font-bold tracking-tight">
+              Queue Availability Manager
+            </h1>
             <p className="text-muted-foreground text-sm mt-1.5">
               Track daily queue exclusion approvals for your support team
             </p>

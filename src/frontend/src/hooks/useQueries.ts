@@ -1,8 +1,18 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import type { Principal } from "@icp-sdk/core/principal";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import type {
+  ApprovalEntry,
+  DailyRecord,
+  DaySummary,
+  HourlyLimit,
+  SlotUsage,
+  SlotUsageWithLimit,
+  UserInfo,
+  UserProfile,
+  UserRole,
+} from "../backend.d";
 import { useActor } from "./useActor";
 import { useInternetIdentity } from "./useInternetIdentity";
-import type { ApprovalEntry, UserProfile, DaySummary, DailyRecord, SlotUsage, HourlyLimit, SlotUsageWithLimit, UserInfo, UserRole } from "../backend.d";
-import type { Principal } from "@icp-sdk/core/principal";
 
 // ── User Profile ─────────────────────────────────────────────────────────────
 
@@ -17,14 +27,19 @@ export function useGetCallerUserProfile() {
       try {
         return await actor.getCallerUserProfile();
       } catch (err: unknown) {
-        // Backend throws "User is not registered" or "Unauthorized" for brand-new users
-        // who haven't called saveCallerUserProfile yet. Treat this as "no profile" so
-        // the ProfileSetup modal will appear and trigger auto-role-assignment.
+        // Backend throws "User is not registered", "Unauthorized", or "Anonymous" for
+        // brand-new users who haven't called saveCallerUserProfile yet. Treat this as
+        // "no profile" so the ProfileSetup modal will appear and trigger auto-role-assignment.
         const msg = err instanceof Error ? err.message : String(err);
-        if (msg.includes("not registered") || msg.includes("Unauthorized")) {
+        if (
+          msg.includes("not registered") ||
+          msg.includes("Unauthorized") ||
+          msg.includes("Anonymous")
+        ) {
           return null;
         }
-        throw err;
+        // Catch-all: unknown errors also return null to avoid blocking the UI.
+        return null;
       }
     },
     enabled: !!actor && !actorFetching && !isInitializing,
@@ -121,7 +136,17 @@ export function useAddApproval() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ icName, managerName, startHour, endHour }: { icName: string; managerName: string; startHour: string; endHour: string }) => {
+    mutationFn: async ({
+      icName,
+      managerName,
+      startHour,
+      endHour,
+    }: {
+      icName: string;
+      managerName: string;
+      startHour: string;
+      endHour: string;
+    }) => {
       if (!actor) throw new Error("Actor not available");
       return actor.addApproval(icName, managerName, startHour, endHour);
     },
@@ -159,6 +184,7 @@ export function useRemoveApproval() {
       queryClient.invalidateQueries({ queryKey: ["dailyApprovals"] });
       queryClient.invalidateQueries({ queryKey: ["remainingSlots"] });
       queryClient.invalidateQueries({ queryKey: ["slotUsage"] });
+      queryClient.invalidateQueries({ queryKey: ["slotUsageWithLimits"] });
     },
   });
 }
@@ -198,7 +224,10 @@ export function useSetHourlyLimit() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ periodIndex, limit }: { periodIndex: number; limit: number }) => {
+    mutationFn: async ({
+      periodIndex,
+      limit,
+    }: { periodIndex: number; limit: number }) => {
       if (!actor) throw new Error("Actor not available");
       await actor.setHourlyLimit(BigInt(periodIndex), BigInt(limit));
     },
@@ -239,6 +268,21 @@ export function useSetUserRole() {
   });
 }
 
+export function useDeleteUser() {
+  const { actor } = useActor();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (user: Principal) => {
+      if (!actor) throw new Error("Actor not available");
+      await actor.deleteUser(user);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["allUsers"] });
+    },
+  });
+}
+
 export function useIsCallerAdmin() {
   const { actor, isFetching } = useActor();
   const { isInitializing } = useInternetIdentity();
@@ -246,7 +290,13 @@ export function useIsCallerAdmin() {
     queryKey: ["isCallerAdmin"],
     queryFn: async () => {
       if (!actor) return false;
-      return actor.isCallerAdmin();
+      try {
+        return await actor.isCallerAdmin();
+      } catch {
+        // Backend may trap for brand-new users who have no role yet.
+        // Treat any error as "not admin" so the UI doesn't break on first login.
+        return false;
+      }
     },
     enabled: !!actor && !isFetching && !isInitializing,
   });
@@ -254,7 +304,10 @@ export function useIsCallerAdmin() {
 
 // ── History ───────────────────────────────────────────────────────────────────
 
-export function useGetHistory(startDate: string | null, endDate: string | null) {
+export function useGetHistory(
+  startDate: string | null,
+  endDate: string | null,
+) {
   const { actor, isFetching } = useActor();
   const { isInitializing } = useInternetIdentity();
   return useQuery<Array<[string, DailyRecord]>>({

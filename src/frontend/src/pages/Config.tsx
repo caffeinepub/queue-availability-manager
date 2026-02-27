@@ -1,11 +1,24 @@
-import React, { useState } from "react";
-import { toast } from "sonner";
-import { Settings, Save, Loader2, Users, Clock, ShieldCheck, Shield, User } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -13,6 +26,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
   TableBody,
@@ -21,15 +35,30 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { useInternetIdentity } from "@/hooks/useInternetIdentity";
 import {
+  useDeleteUser,
   useGetHourlyLimits,
-  useSetHourlyLimit,
   useListAllUsers,
+  useSetHourlyLimit,
   useSetUserRole,
 } from "@/hooks/useQueries";
+import { cn } from "@/lib/utils";
+import {
+  Clock,
+  Loader2,
+  Save,
+  Settings,
+  Shield,
+  ShieldCheck,
+  Trash2,
+  User,
+  Users,
+} from "lucide-react";
+import React, { useState } from "react";
+import { toast } from "sonner";
 import { UserRole } from "../backend.d";
 import type { UserInfo } from "../backend.d";
-import { cn } from "@/lib/utils";
 
 const SLOT_PERIODS = [
   "7 AM - 8 AM",
@@ -73,8 +102,8 @@ function HourlyLimitRow({
   };
 
   const handleSave = async () => {
-    const parsed = parseInt(inputVal, 10);
-    if (isNaN(parsed) || parsed < 0) {
+    const parsed = Number.parseInt(inputVal, 10);
+    if (Number.isNaN(parsed) || parsed < 0) {
       toast.error("Please enter a valid number (0 or greater)");
       return;
     }
@@ -142,7 +171,10 @@ function RoleBadge({ role }: { role: UserRole }) {
   }
   if (role === UserRole.user) {
     return (
-      <Badge className="gap-1 bg-success/10 text-success border-success/20 hover:bg-success/10" style={{ color: "oklch(0.62 0.18 150)" }}>
+      <Badge
+        className="gap-1 bg-success/10 text-success border-success/20 hover:bg-success/10"
+        style={{ color: "oklch(0.62 0.18 150)" }}
+      >
         <User className="h-3 w-3" />
         Member
       </Badge>
@@ -159,10 +191,14 @@ function RoleBadge({ role }: { role: UserRole }) {
 
 // ── User Row ──────────────────────────────────────────────────────────────────
 
-function UserRow({ userInfo }: { userInfo: UserInfo }) {
+function UserRow({
+  userInfo,
+  currentPrincipal,
+}: { userInfo: UserInfo; currentPrincipal: string }) {
   const [selectedRole, setSelectedRole] = useState<UserRole>(userInfo.role);
   const [dirty, setDirty] = useState(false);
   const setRoleMutation = useSetUserRole();
+  const deleteUserMutation = useDeleteUser();
 
   // Sync when role changes externally
   React.useEffect(() => {
@@ -178,30 +214,54 @@ function UserRow({ userInfo }: { userInfo: UserInfo }) {
 
   const handleSave = async () => {
     try {
-      await setRoleMutation.mutateAsync({ user: userInfo.principal, role: selectedRole });
-      toast.success(`${userInfo.name || "User"} role updated to ${selectedRole}`);
+      await setRoleMutation.mutateAsync({
+        user: userInfo.principal,
+        role: selectedRole,
+      });
+      toast.success(
+        `${userInfo.name || "User"} role updated to ${selectedRole}`,
+      );
       setDirty(false);
     } catch {
       toast.error("Failed to update user role");
     }
   };
 
+  const handleDelete = async () => {
+    try {
+      await deleteUserMutation.mutateAsync(userInfo.principal);
+      toast.success(`${userInfo.name || "User"} has been deleted`);
+    } catch {
+      toast.error("Failed to delete user");
+    }
+  };
+
   const isGuest = userInfo.role === UserRole.guest;
+  const isSelf = userInfo.principal.toString() === currentPrincipal;
   const principalStr = userInfo.principal.toString();
-  const shortPrincipal = principalStr.slice(0, 8) + "…";
+  const shortPrincipal = `${principalStr.slice(0, 8)}…`;
 
   return (
     <TableRow className={cn(isGuest && "bg-guest-row")}>
       <TableCell className="font-medium">
         <div className="flex flex-col">
-          <span className="text-sm">{userInfo.name || <span className="italic text-muted-foreground">No name set</span>}</span>
+          <span className="text-sm">
+            {userInfo.name || (
+              <span className="italic text-muted-foreground">No name set</span>
+            )}
+          </span>
           {isGuest && (
-            <span className="text-[10px] text-guest font-medium mt-0.5">New — pending approval</span>
+            <span className="text-[10px] text-guest font-medium mt-0.5">
+              New — pending approval
+            </span>
           )}
         </div>
       </TableCell>
       <TableCell>
-        <span className="font-mono text-xs text-muted-foreground" title={principalStr}>
+        <span
+          className="font-mono text-xs text-muted-foreground"
+          title={principalStr}
+        >
           {shortPrincipal}
         </span>
       </TableCell>
@@ -238,6 +298,44 @@ function UserRow({ userInfo }: { userInfo: UserInfo }) {
             )}
             {dirty ? "Save" : "Saved"}
           </Button>
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                disabled={isSelf || deleteUserMutation.isPending}
+                title={
+                  isSelf ? "You cannot delete your own account" : "Delete user"
+                }
+              >
+                {deleteUserMutation.isPending ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Trash2 className="h-3.5 w-3.5" />
+                )}
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Delete user?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  This will permanently remove{" "}
+                  <strong>{userInfo.name || "this user"}</strong> and revoke
+                  their access. They can re-register by logging in again.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={handleDelete}
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                >
+                  Delete
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </div>
       </TableCell>
     </TableRow>
@@ -247,12 +345,15 @@ function UserRow({ userInfo }: { userInfo: UserInfo }) {
 // ── Config Page ───────────────────────────────────────────────────────────────
 
 export default function Config() {
-  const { data: hourlyLimits = [], isLoading: limitsLoading } = useGetHourlyLimits();
+  const { data: hourlyLimits = [], isLoading: limitsLoading } =
+    useGetHourlyLimits();
   const { data: users = [], isLoading: usersLoading } = useListAllUsers();
+  const { identity } = useInternetIdentity();
+  const currentPrincipal = identity?.getPrincipal().toString() ?? "";
 
   // Build a map from periodIndex → limit for quick access
   const limitsMap = new Map<number, number>(
-    hourlyLimits.map((hl) => [Number(hl.periodIndex), Number(hl.limit)])
+    hourlyLimits.map((hl) => [Number(hl.periodIndex), Number(hl.limit)]),
   );
 
   const guestCount = users.filter((u) => u.role === UserRole.guest).length;
@@ -278,7 +379,8 @@ export default function Config() {
             Hourly Slot Limits
           </CardTitle>
           <CardDescription>
-            Set the maximum number of ICs allowed off-queue per hour slot (7 AM – 7 PM CT).
+            Set the maximum number of ICs allowed off-queue per hour slot (7 AM
+            – 7 PM CT).
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -328,8 +430,10 @@ export default function Config() {
           <div className="mx-6 mb-4 px-3.5 py-2.5 rounded-md bg-guest-row border border-guest text-sm text-guest flex items-start gap-2">
             <Shield className="h-4 w-4 mt-0.5 shrink-0" />
             <span>
-              New users appear with <strong>Guest</strong> status and are highlighted in orange.
-              Change their role to <strong>Member</strong> to grant access, or <strong>Admin</strong> for full control.
+              New users appear with <strong>Guest</strong> status and are
+              highlighted in orange. Change their role to{" "}
+              <strong>Member</strong> to grant access, or <strong>Admin</strong>{" "}
+              for full control.
             </span>
           </div>
 
@@ -342,7 +446,9 @@ export default function Config() {
           ) : users.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 text-center">
               <Users className="h-12 w-12 text-muted-foreground/30 mb-4" />
-              <p className="text-sm font-medium text-muted-foreground">No users yet</p>
+              <p className="text-sm font-medium text-muted-foreground">
+                No users yet
+              </p>
               <p className="text-xs text-muted-foreground/60 mt-1">
                 Users will appear here once they log in
               </p>
@@ -364,6 +470,7 @@ export default function Config() {
                     <TableHead className="text-xs uppercase tracking-wide font-semibold text-muted-foreground">
                       Change Role
                     </TableHead>
+                    <TableHead className="text-xs uppercase tracking-wide font-semibold text-muted-foreground w-10" />
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -374,7 +481,11 @@ export default function Config() {
                       return order[a.role] - order[b.role];
                     })
                     .map((userInfo) => (
-                      <UserRow key={userInfo.principal.toString()} userInfo={userInfo} />
+                      <UserRow
+                        key={userInfo.principal.toString()}
+                        userInfo={userInfo}
+                        currentPrincipal={currentPrincipal}
+                      />
                     ))}
                 </TableBody>
               </Table>

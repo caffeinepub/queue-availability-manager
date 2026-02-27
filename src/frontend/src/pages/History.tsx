@@ -1,10 +1,8 @@
-import React, { useState, useMemo } from "react";
-import { CalendarDays, Search, TrendingUp, Trophy, BarChart3, ChevronDown, ChevronRight, Clock } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
@@ -15,11 +13,22 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useGetHistory } from "@/hooks/useQueries";
+import {
+  BarChart3,
+  CalendarDays,
+  ChevronDown,
+  ChevronRight,
+  Clock,
+  Search,
+  TrendingUp,
+  Trophy,
+} from "lucide-react";
+import React, { useState, useMemo } from "react";
 import type { ApprovalEntry } from "../backend.d";
 
 function formatDateStr(dateStr: string): string {
   try {
-    const d = new Date(dateStr + "T00:00:00");
+    const d = new Date(`${dateStr}T00:00:00`);
     return d.toLocaleDateString([], {
       weekday: "short",
       month: "short",
@@ -56,10 +65,10 @@ function HistoryRow({ date, cap, approved, approvals }: HistoryRowProps) {
     utilPct === 0
       ? "text-muted-foreground"
       : utilPct <= 50
-      ? "text-success"
-      : utilPct < 100
-      ? "text-warning"
-      : "text-danger";
+        ? "text-success"
+        : utilPct < 100
+          ? "text-warning"
+          : "text-danger";
 
   const icNames = approvals.map((a) => a.icName);
 
@@ -84,9 +93,13 @@ function HistoryRow({ date, cap, approved, approvals }: HistoryRowProps) {
           </div>
         </TableCell>
         <TableCell className="font-mono text-sm text-center">{cap}</TableCell>
-        <TableCell className="font-mono text-sm text-center">{approved}</TableCell>
+        <TableCell className="font-mono text-sm text-center">
+          {approved}
+        </TableCell>
         <TableCell className="text-center">
-          <span className={`font-mono text-sm font-semibold ${utilColor}`}>{utilPct}%</span>
+          <span className={`font-mono text-sm font-semibold ${utilColor}`}>
+            {utilPct}%
+          </span>
         </TableCell>
         <TableCell>
           {icNames.length === 0 ? (
@@ -131,7 +144,9 @@ export default function History() {
   const today = new Date();
   const [startDate, setStartDate] = useState(toISO(subtractDays(today, 30)));
   const [endDate, setEndDate] = useState(toISO(today));
-  const [queryStart, setQueryStart] = useState<string | null>(toISO(subtractDays(today, 30)));
+  const [queryStart, setQueryStart] = useState<string | null>(
+    toISO(subtractDays(today, 30)),
+  );
   const [queryEnd, setQueryEnd] = useState<string | null>(toISO(today));
 
   const { data: history = [], isLoading } = useGetHistory(queryStart, queryEnd);
@@ -143,15 +158,19 @@ export default function History() {
 
   // Sort descending by date
   const sorted = useMemo(
-    () =>
-      [...history].sort(([a], [b]) => (a > b ? -1 : a < b ? 1 : 0)),
-    [history]
+    () => [...history].sort(([a], [b]) => (a > b ? -1 : a < b ? 1 : 0)),
+    [history],
   );
 
   // Summary stats
   const stats = useMemo(() => {
     if (sorted.length === 0)
-      return { totalDays: 0, avgUtil: 0, busiestDay: null as string | null, busiestCount: 0 };
+      return {
+        totalDays: 0,
+        avgUtil: 0,
+        busiestDay: null as string | null,
+        busiestCount: 0,
+      };
 
     let totalApproved = 0;
     let totalCap = 0;
@@ -168,7 +187,8 @@ export default function History() {
       }
     }
 
-    const avgUtil = totalCap > 0 ? Math.round((totalApproved / totalCap) * 100) : 0;
+    const avgUtil =
+      totalCap > 0 ? Math.round((totalApproved / totalCap) * 100) : 0;
     return {
       totalDays: sorted.length,
       avgUtil,
@@ -181,7 +201,9 @@ export default function History() {
     <div className="space-y-6 animate-fade-up">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">History & Reports</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">
+          History & Reports
+        </h1>
         <p className="text-muted-foreground text-sm mt-0.5">
           Review past daily queue exclusion records
         </p>
@@ -192,7 +214,10 @@ export default function History() {
         <CardContent className="py-4">
           <div className="flex flex-wrap items-end gap-4">
             <div className="space-y-1.5">
-              <Label htmlFor="start-date" className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+              <Label
+                htmlFor="start-date"
+                className="text-xs font-medium text-muted-foreground uppercase tracking-wide"
+              >
                 Start Date
               </Label>
               <Input
@@ -204,7 +229,10 @@ export default function History() {
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="end-date" className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+              <Label
+                htmlFor="end-date"
+                className="text-xs font-medium text-muted-foreground uppercase tracking-wide"
+              >
                 End Date
               </Label>
               <Input
@@ -260,8 +288,8 @@ export default function History() {
                       stats.avgUtil <= 50
                         ? "text-success"
                         : stats.avgUtil < 100
-                        ? "text-warning"
-                        : "text-danger"
+                          ? "text-warning"
+                          : "text-danger"
                     }`}
                   >
                     {stats.avgUtil}%
@@ -285,7 +313,8 @@ export default function History() {
                         {formatDateStr(stats.busiestDay)}
                       </p>
                       <p className="text-xs text-muted-foreground mt-0.5">
-                        {stats.busiestCount} exclusion{stats.busiestCount !== 1 ? "s" : ""}
+                        {stats.busiestCount} exclusion
+                        {stats.busiestCount !== 1 ? "s" : ""}
                       </p>
                     </>
                   ) : (
@@ -317,9 +346,12 @@ export default function History() {
           ) : sorted.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 text-center">
               <CalendarDays className="h-12 w-12 text-muted-foreground/30 mb-4" />
-              <p className="text-sm font-medium text-muted-foreground">No history found</p>
+              <p className="text-sm font-medium text-muted-foreground">
+                No history found
+              </p>
               <p className="text-xs text-muted-foreground/60 mt-1">
-                Try adjusting the date range or check back after the first day of activity
+                Try adjusting the date range or check back after the first day
+                of activity
               </p>
             </div>
           ) : (

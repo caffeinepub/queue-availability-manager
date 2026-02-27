@@ -54,6 +54,7 @@ export enum UserRole {
 export interface backendInterface {
     addApproval(icName: string, managerName: string, startHour: string, endHour: string): Promise<ApprovalEntry>;
     assignCallerUserRole(user: Principal, role: UserRole): Promise<void>;
+    deleteUser(user: Principal): Promise<void>;
     getCallerUserProfile(): Promise<UserProfile | null>;
     getCallerUserRole(): Promise<UserRole>;
     getDailyApprovals(): Promise<Array<ApprovalEntry>>;

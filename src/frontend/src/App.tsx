@@ -1,16 +1,23 @@
-import React, { useState } from "react";
+import ProfileSetup from "@/components/ProfileSetup";
+import { Button } from "@/components/ui/button";
 import { Toaster } from "@/components/ui/sonner";
 import { useInternetIdentity } from "@/hooks/useInternetIdentity";
-import { useQueryClient } from "@tanstack/react-query";
-import { LayoutDashboard, History, LogOut, Loader2, Heart, Settings } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { useGetCallerUserProfile, useIsCallerAdmin } from "@/hooks/useQueries";
 import { cn } from "@/lib/utils";
-import LoginPage from "@/pages/Login";
+import ConfigPage from "@/pages/Config";
 import DashboardPage from "@/pages/Dashboard";
 import HistoryPage from "@/pages/History";
-import ConfigPage from "@/pages/Config";
-import ProfileSetup from "@/components/ProfileSetup";
-import { useGetCallerUserProfile, useIsCallerAdmin } from "@/hooks/useQueries";
+import LoginPage from "@/pages/Login";
+import { useQueryClient } from "@tanstack/react-query";
+import {
+  Heart,
+  History,
+  LayoutDashboard,
+  Loader2,
+  LogOut,
+  Settings,
+} from "lucide-react";
+import React, { useState } from "react";
 
 type Tab = "dashboard" | "history" | "config";
 
@@ -19,27 +26,45 @@ function AppShell() {
   const { clear, identity } = useInternetIdentity();
   const queryClient = useQueryClient();
 
-  const { data: userProfile, isLoading: profileLoading, isFetched: profileFetched, isError: profileError } = useGetCallerUserProfile();
+  const {
+    data: userProfile,
+    isLoading: profileLoading,
+    isFetched: profileFetched,
+    isError: profileError,
+  } = useGetCallerUserProfile();
   const { data: isAdmin = false } = useIsCallerAdmin();
 
   const isAuthenticated = !!identity;
   // Guard against error states (e.g. anonymous principal) to prevent spurious modal flash
-  const showProfileSetup = isAuthenticated && !profileLoading && !profileError && profileFetched && userProfile === null;
+  const showProfileSetup =
+    isAuthenticated &&
+    !profileLoading &&
+    !profileError &&
+    profileFetched &&
+    userProfile === null;
 
   const handleLogout = async () => {
     await clear();
     queryClient.clear();
   };
 
-  const userName = userProfile?.name ?? identity?.getPrincipal().toString().slice(0, 8) + "…";
+  const userName =
+    userProfile?.name ?? `${identity?.getPrincipal().toString().slice(0, 8)}…`;
 
-  const baseNavItems: { id: Tab; label: string; Icon: typeof LayoutDashboard }[] = [
+  const baseNavItems: {
+    id: Tab;
+    label: string;
+    Icon: typeof LayoutDashboard;
+  }[] = [
     { id: "dashboard", label: "Dashboard", Icon: LayoutDashboard },
     { id: "history", label: "History", Icon: History },
   ];
 
   const navItems = isAdmin
-    ? [...baseNavItems, { id: "config" as Tab, label: "Config", Icon: Settings }]
+    ? [
+        ...baseNavItems,
+        { id: "config" as Tab, label: "Config", Icon: Settings },
+      ]
     : baseNavItems;
 
   return (
@@ -53,7 +78,9 @@ function AppShell() {
               <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary/10">
                 <LayoutDashboard className="h-4 w-4 text-primary" />
               </div>
-              <span className="font-semibold text-sm hidden sm:block">Queue Availability Manager</span>
+              <span className="font-semibold text-sm hidden sm:block">
+                Queue Availability Manager
+              </span>
               <span className="font-semibold text-sm sm:hidden">QAM</span>
             </div>
 
@@ -68,7 +95,7 @@ function AppShell() {
                     "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-all duration-150",
                     activeTab === id
                       ? "bg-card text-foreground shadow-xs"
-                      : "text-muted-foreground hover:text-foreground"
+                      : "text-muted-foreground hover:text-foreground",
                   )}
                 >
                   <Icon className="h-3.5 w-3.5" />
@@ -111,8 +138,7 @@ function AppShell() {
       <footer className="border-t border-border/40 mt-auto py-4">
         <p className="text-center text-xs text-muted-foreground/50">
           © 2026. Built with{" "}
-          <Heart className="inline h-3 w-3 fill-danger text-danger" />{" "}
-          using{" "}
+          <Heart className="inline h-3 w-3 fill-danger text-danger" /> using{" "}
           <a
             href="https://caffeine.ai"
             target="_blank"
