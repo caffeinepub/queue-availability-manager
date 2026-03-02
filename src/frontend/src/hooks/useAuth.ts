@@ -9,7 +9,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { useActor } from "./useActor";
+import { useActorInternal as useActor } from "./useActorInternal";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
