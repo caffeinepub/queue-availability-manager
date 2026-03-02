@@ -1,0 +1,109 @@
+type UserRole = 
+ variant {
+   admin;
+   guest;
+   user;
+ };
+type UserProfile = record {name: text;};
+type UserInfo = 
+ record {
+   name: text;
+   role: UserRole;
+   userId: nat;
+ };
+type SlotUsageWithLimit = 
+ record {
+   count: nat;
+   limit: nat;
+   timeSlot: text;
+ };
+type SlotUsage = 
+ record {
+   count: nat;
+   timeSlot: text;
+ };
+type R_4 = 
+ variant {
+   err: text;
+   ok: ApprovalEntry;
+ };
+type R_3 = 
+ variant {
+   err: text;
+   ok: text;
+ };
+type R_2 = 
+ variant {
+   err: text;
+   ok: nat;
+ };
+type R_1 = 
+ variant {
+   err: text;
+   ok;
+ };
+type R = 
+ variant {
+   err: text;
+   ok: UserInfo;
+ };
+type HourlyLimit = 
+ record {
+   limit: nat;
+   periodIndex: nat;
+ };
+type DaySummary = 
+ record {
+   cap: nat;
+   countApproved: nat;
+   date: text;
+   icNames: vec text;
+ };
+type DailyRecord = 
+ record {
+   approvals: vec ApprovalEntry;
+   cap: nat;
+ };
+type ApprovalEntry = 
+ record {
+   createdByUserId: nat;
+   endHour: text;
+   entryId: nat;
+   exclusionDate: text;
+   icName: text;
+   managerName: text;
+   startHour: text;
+   timestampNs: int;
+ };
+service : {
+  addApproval: (sessionToken: text, icName: text, managerName: text,
+   startHour: text, endHour: text, exclusionDate: text) -> (R_4);
+  deleteUser: (sessionToken: text, targetUserId: nat) -> (R_1);
+  getCallerUserId: (sessionToken: text) -> (opt nat) query;
+  getCallerUserProfile: (sessionToken: text) -> (opt UserProfile) query;
+  getDailyApprovals: (sessionToken: text) -> (vec ApprovalEntry) query;
+  getDailyCap: (sessionToken: text) -> (nat) query;
+  getFutureApprovals: (sessionToken: text) -> (vec ApprovalEntry) query;
+  getHistory: (sessionToken: text, startDate: opt text, endDate: opt text) ->
+   (vec record {
+          text;
+          DailyRecord;
+        }) query;
+  getHourlyLimits: (sessionToken: text) -> (vec HourlyLimit) query;
+  getRemainingSlots: (sessionToken: text) -> (nat) query;
+  getSlotUsage: (sessionToken: text) -> (vec SlotUsage) query;
+  getSlotUsageWithLimits: (sessionToken: text) ->
+   (vec SlotUsageWithLimit) query;
+  getSummary: (sessionToken: text) -> (vec DaySummary) query;
+  isCallerAdmin: (sessionToken: text) -> (bool) query;
+  listAllUsers: (sessionToken: text) -> (vec UserInfo) query;
+  login: (username: text, password: text) -> (R_3);
+  logout: (sessionToken: text) -> ();
+  register: (username: text, password: text) -> (R_2);
+  removeApproval: (sessionToken: text, entryId: nat) -> (R_1);
+  setDailyCap: (sessionToken: text, cap: nat) -> (R_1);
+  setHourlyLimit: (sessionToken: text, periodIndex: nat, limit: nat) -> (R_1);
+  setUserRole: (sessionToken: text, targetUserId: nat, role: UserRole) ->
+   (R_1);
+  whoami: (sessionToken: text) -> (R) query;
+}

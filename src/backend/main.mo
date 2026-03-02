@@ -1,22 +1,15 @@
 import Map "mo:core/Map";
 import Text "mo:core/Text";
 import Time "mo:core/Time";
-import Nat "mo:core/Nat";
 import Int "mo:core/Int";
 import Order "mo:core/Order";
 import Runtime "mo:core/Runtime";
-import Iter "mo:core/Iter";
 import List "mo:core/List";
 import Principal "mo:core/Principal";
-import MixinAuthorization "authorization/MixinAuthorization";
-
-import AccessControl "authorization/access-control";
-
 
 actor {
   let nanosecondToSeconds = 1_000_000_000;
-  let weekdayOffset = 1;
-  let defaultDailyCap = 50;
+  let sessionExpiryNs : Int = 86_400_000_000_000;
 
   let validHours = [
     "7 AM", "8 AM", "9 AM", "10 AM", "11 AM", "12 PM",
@@ -29,7 +22,12 @@ actor {
     "3 PM - 4 PM", "4 PM - 5 PM", "5 PM - 6 PM", "6 PM - 7 PM",
   ];
 
-  type ApprovalEntry = {
+  // ── Public types ──────────────────────────────────────────────────────────
+  public type UserRole = { #admin; #user; #guest };
+  public type UserProfile = { name : Text };
+  public type UserInfo = { userId : Nat; name : Text; role : UserRole };
+
+  public type ApprovalEntry = {
     entryId : Nat;
     icName : Text;
     managerName : Text;
@@ -37,40 +35,138 @@ actor {
     startHour : Text;
     endHour : Text;
     exclusionDate : Text;
-    createdBy : Principal;
+    createdByUserId : Nat;
   };
 
-  type DailyRecord = { cap : Nat; approvals : [ApprovalEntry] };
-  type DaySummary = { date : Text; cap : Nat; countApproved : Nat; icNames : [Text] };
-  type SlotUsage = { timeSlot : Text; count : Nat };
-
+  public type DailyRecord = { cap : Nat; approvals : [ApprovalEntry] };
+  public type DaySummary = { date : Text; cap : Nat; countApproved : Nat; icNames : [Text] };
+  public type SlotUsage = { timeSlot : Text; count : Nat };
   public type SlotUsageWithLimit = { timeSlot : Text; count : Nat; limit : Nat };
   public type HourlyLimit = { periodIndex : Nat; limit : Nat };
-  public type UserProfile = { name : Text };
-  public type UserInfo = { principal : Principal; name : Text; role : AccessControl.UserRole };
 
-  type State = {
+  // ── Private types ─────────────────────────────────────────────────────────
+  type R<T, E> = { #ok : T; #err : E };
+  type Credential = { userId : Nat; passwordHash : Text };
+  type Session = { userId : Nat; createdAtNs : Int };
+
+  // ── Old stable variable types (kept for upgrade compatibility) ────────────
+  // These accept the old stable state so the canister upgrade doesn't fail.
+  // They are not used in any logic below.
+  type OldUserRole = { #admin; #user; #guest };
+  type OldApprovalEntry = {
+    entryId : Nat; icName : Text; managerName : Text; timestampNs : Int;
+    startHour : Text; endHour : Text; exclusionDate : Text; createdBy : Principal;
+  };
+  type OldDailyRecord = { cap : Nat; approvals : [OldApprovalEntry] };
+  type OldState = {
     var lastUpdateNs : Int;
     var dailyCap : Nat;
-    var dailyApprovals : List.List<ApprovalEntry>;
+    var dailyApprovals : List.List<OldApprovalEntry>;
     var lastAssignedId : Nat;
   };
-
-  let historyStore = Map.empty<Text, DailyRecord>();
-  var state : State = {
-    var lastUpdateNs = Time.now();
-    var dailyCap = defaultDailyCap;
-    var dailyApprovals = List.empty<ApprovalEntry>();
-    var lastAssignedId = 0;
+  type OldAccessControlState = {
+    var adminAssigned : Bool;
+    userRoles : Map.Map<Principal, OldUserRole>;
   };
 
-  let accessControlState = AccessControl.initState();
-  include MixinAuthorization(accessControlState);
-
+  // ── Old stable variables (accepted, will hold old values on upgrade) ──────
+  // Variable names must match the OLD actor exactly.
+  let weekdayOffset : Nat = 1;
+  let defaultDailyCap : Nat = 50;
+  let accessControlState : OldAccessControlState = {
+    var adminAssigned = false;
+    userRoles = Map.empty<Principal, OldUserRole>();
+  };
+  var state : OldState = {
+    var lastUpdateNs = Time.now();
+    var dailyCap = 50;
+    var dailyApprovals = List.empty<OldApprovalEntry>();
+    var lastAssignedId = 0;
+  };
+  // historyStore and userProfiles need their OLD types here for upgrade compat,
+  // but we also need NEW versions with new types. We use different names below.
+  let historyStore = Map.empty<Text, OldDailyRecord>();
   let userProfiles = Map.empty<Principal, UserProfile>();
+  var adminAssigned : Bool = false;
   let hourlyLimits = Map.empty<Nat, Nat>();
-  var adminAssigned = false;
 
+  // ── New stable variables (all use "new" prefix to avoid name collision) ────
+  var newAdminAssigned : Bool = false;
+  var newUserIdCounter : Nat = 0;
+  var newTokenCounter : Nat = 0;
+  let newCredentials = Map.empty<Text, Credential>();
+  let newUserProfiles = Map.empty<Nat, UserProfile>();
+  let newUserRoles = Map.empty<Nat, UserRole>();
+  let newSessionTokens = Map.empty<Text, Session>();
+  let newHistoryStore = Map.empty<Text, DailyRecord>();
+    let newDailyApprovals = List.empty<ApprovalEntry>();
+  var newLastAssignedId : Nat = 0;
+  var newDailyCap : Nat = 50;
+  var newLastUpdateNs : Int = Time.now();
+
+  // ── Password Hashing ──────────────────────────────────────────────────────
+  func hashPassword(password : Text) : Text {
+    var h : Nat = 5381;
+    for (c in password.chars()) {
+      h := (h * 33 + c.toNat32().toNat()) % 4294967296;
+    };
+    h.toText();
+  };
+
+  // ── Token Generation ──────────────────────────────────────────────────────
+  func generateToken(userId : Nat) : Text {
+    newTokenCounter += 1;
+    let t = Int.abs(Time.now());
+    let combined = (userId * 1000003 + t % 999983 + newTokenCounter * 7919) % 999999999999;
+    userId.toText() # "-" # combined.toText() # "-" # newTokenCounter.toText();
+  };
+
+  // ── Session Validation ────────────────────────────────────────────────────
+  func validateSession(token : Text) : ?Nat {
+    switch (newSessionTokens.get(token)) {
+      case (null) { null };
+      case (?session) {
+        if (Time.now() - session.createdAtNs > sessionExpiryNs) {
+          newSessionTokens.remove(token);
+          null;
+        } else {
+          ?session.userId;
+        };
+      };
+    };
+  };
+
+  func getUserRole(userId : Nat) : UserRole {
+    switch (newUserRoles.get(userId)) {
+      case (?role) { role };
+      case (null) { #guest };
+    };
+  };
+
+  func requireUser(token : Text) : Nat {
+    let userId = switch (validateSession(token)) {
+      case (null) { Runtime.trap("Unauthorized: Invalid or expired session") };
+      case (?uid) { uid };
+    };
+    switch (newUserRoles.get(userId)) {
+      case (?#guest) { Runtime.trap("Unauthorized: Member access required. Your account may be pending approval.") };
+      case (null) { Runtime.trap("Unauthorized: Member access required.") };
+      case (_) { userId };
+    };
+  };
+
+  func requireAdmin(token : Text) : Nat {
+    let userId = switch (validateSession(token)) {
+      case (null) { Runtime.trap("Unauthorized: Invalid or expired session") };
+      case (?uid) { uid };
+    };
+    switch (newUserRoles.get(userId)) {
+      case (?#admin) { userId };
+      case (_) { Runtime.trap("Unauthorized: Admin access required") };
+    };
+  };
+
+  // ── Date Helpers ──────────────────────────────────────────────────────────
   func isLeapYear(year : Int) : Bool {
     if (year % 400 == 0) { return true };
     if (year % 100 == 0) { return false };
@@ -103,25 +199,20 @@ actor {
   func nanosecondsToDateString(nanoseconds : Int) : Text {
     let totalSeconds = nanoseconds / nanosecondToSeconds;
     var days = totalSeconds / 86400;
-
-    var year = 1970;
-    var daysInYear = if (isLeapYear(year)) { 366 } else { 365 };
-
+    var year : Int = 1970;
+    var daysInYear : Int = if (isLeapYear(year)) { 366 } else { 365 };
     while (days >= daysInYear) {
       days -= daysInYear;
       year += 1;
       daysInYear := if (isLeapYear(year)) { 366 } else { 365 };
     };
-
-    var month = 1;
-    var daysInCurrentMonth = daysInMonth(month, year);
-
+    var month : Int = 1;
+    var daysInCurrentMonth : Int = daysInMonth(month, year);
     while (days >= daysInCurrentMonth) {
       days -= daysInCurrentMonth;
       month += 1;
       daysInCurrentMonth := daysInMonth(month, year);
     };
-
     let day = days + 1;
     year.toText() # "-" # padZero(month) # "-" # padZero(day);
   };
@@ -134,103 +225,35 @@ actor {
     validHours.indexOf(hour);
   };
 
+  // ── Daily Reset ───────────────────────────────────────────────────────────
   func checkAndResetDay() {
     let today = nanosecondsToDateString(Time.now());
-    let lastRecordedDay = nanosecondsToDateString(state.lastUpdateNs);
+    let lastRecordedDay = nanosecondsToDateString(newLastUpdateNs);
     if (today != lastRecordedDay) {
-      let filteredApprovals = List.empty<ApprovalEntry>();
-      for (entry in state.dailyApprovals.values()) {
-        if (compareDateStrings(entry.exclusionDate, today) == #greater) {
-          filteredApprovals.add(entry);
-        };
-      };
-      let archivedDay = { cap = state.dailyCap; approvals = state.dailyApprovals.filter(func(e) { e.exclusionDate != today }).toArray() };
-      historyStore.add(lastRecordedDay, archivedDay);
-      state.lastUpdateNs := Time.now();
-      state.dailyApprovals.clear();
-      for (entry in filteredApprovals.values()) { state.dailyApprovals.add(entry) };
+      let approvalsArray = newDailyApprovals.toArray();
+      let archivedApprovals = approvalsArray.filter(func(e : ApprovalEntry) : Bool { e.exclusionDate == lastRecordedDay });
+      let archivedDay : DailyRecord = { cap = newDailyCap; approvals = archivedApprovals };
+      newHistoryStore.add(lastRecordedDay, archivedDay);
+      let futureEntries = approvalsArray.filter(func(e : ApprovalEntry) : Bool { compareDateStrings(e.exclusionDate, today) == #greater });
+      newDailyApprovals.clear();
+      for (entry in futureEntries.vals()) { newDailyApprovals.add(entry) };
+      newLastUpdateNs := Time.now();
     };
   };
 
-  public query ({ caller }) func getDailyCap() : async Nat {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only users can view daily cap");
-    };
-    state.dailyCap;
-  };
-
-  public query ({ caller }) func getDailyApprovals() : async [ApprovalEntry] {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only users can view daily approvals");
-    };
-    let today = nanosecondsToDateString(Time.now());
-    let filteredApprovals = state.dailyApprovals.toArray().filter(func(entry) { entry.exclusionDate == today });
-    filteredApprovals;
-  };
-
-  public query ({ caller }) func getFutureApprovals() : async [ApprovalEntry] {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only users can view future approvals");
-    };
-    let today = nanosecondsToDateString(Time.now());
-    let filteredApprovals = state.dailyApprovals.toArray().filter(func(entry) { compareDateStrings(entry.exclusionDate, today) == #greater });
-    filteredApprovals;
-  };
-
-  public query ({ caller }) func getRemainingSlots() : async Nat {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only users can view remaining slots");
-    };
-    let today = nanosecondsToDateString(Time.now());
-    let todayApprovals = state.dailyApprovals.toArray().filter(func(entry) { entry.exclusionDate == today });
-    if (todayApprovals.size() >= state.dailyCap) { return 0 };
-    state.dailyCap - todayApprovals.size();
-  };
-
-  public query ({ caller }) func getHistory(startDate : ?Text, endDate : ?Text) : async [(Text, DailyRecord)] {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only users can view history");
-    };
-    let filteredIter = historyStore.entries().filter(func((date, _)) {
-      let afterStart = switch (startDate) { case (null) { true }; case (?start) { compareDateStrings(date, start) != #less } };
-      let beforeEnd = switch (endDate) { case (null) { true }; case (?end) { compareDateStrings(date, end) != #greater } };
-      afterStart and beforeEnd;
-    });
-    filteredIter.toArray();
-  };
-
-  public query ({ caller }) func getSummary() : async [DaySummary] {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only users can view summary");
-    };
-    let summaries = List.empty<DaySummary>();
-    for ((date, record) in historyStore.entries()) {
-      summaries.add({ date; cap = record.cap; countApproved = record.approvals.size(); icNames = record.approvals.map(func(e) { e.icName }) });
-    };
-    let today = nanosecondsToDateString(Time.now());
-    let todayApprovals = state.dailyApprovals.toArray().filter(func(entry) { entry.exclusionDate == today });
-    summaries.add({ date = today; cap = state.dailyCap; countApproved = todayApprovals.size(); icNames = todayApprovals.map(func(e) { e.icName }) });
-    summaries.toArray();
-  };
-
-  public query ({ caller }) func getSlotUsage() : async [SlotUsage] {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only users can view slot usage");
-    };
-    getSlotUsageInternal();
-  };
-
+  // ── Slot Usage ────────────────────────────────────────────────────────────
   func getSlotUsageInternal() : [SlotUsage] {
     let today = nanosecondsToDateString(Time.now());
-    let approvalsArray = state.dailyApprovals.toArray().filter(func(entry) { entry.exclusionDate == today });
-    let latestIndex = displayPeriods.size() - 1 : Nat;
+    let approvalsArray = newDailyApprovals.toArray().filter(func(e : ApprovalEntry) : Bool { e.exclusionDate == today });
     let results = List.empty<SlotUsage>();
-    var i = 0 : Nat;
-    for (period in displayPeriods.values()) {
-      let count = approvalsArray.filter(func(entry) {
-        let start = findHourIndex(entry.startHour);
-        let end = findHourIndex(entry.endHour);
-        switch (start, end) { case (?s, ?e) { s <= i and e > i and i <= latestIndex }; case (_) { false } };
+    var i : Nat = 0;
+    for (period in displayPeriods.vals()) {
+      let idx = i;
+      let count = approvalsArray.filter(func(entry : ApprovalEntry) : Bool {
+        switch (findHourIndex(entry.startHour), findHourIndex(entry.endHour)) {
+          case (?s, ?e) { s <= idx and e > idx };
+          case (_) { false };
+        };
       }).size();
       results.add({ timeSlot = period; count });
       i += 1;
@@ -238,174 +261,293 @@ actor {
     results.toArray();
   };
 
-  public query ({ caller }) func getHourlyLimits() : async [HourlyLimit] {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only users can view hourly limits");
+  // ── Auth Endpoints ────────────────────────────────────────────────────────
+  public shared func register(username : Text, password : Text) : async R<Nat, Text> {
+    if (username.size() < 3) { return #err("Username must be at least 3 characters") };
+    if (password.size() < 6) { return #err("Password must be at least 6 characters") };
+    switch (newCredentials.get(username)) {
+      case (?_) { return #err("Username already taken") };
+      case (null) {};
     };
-    let limits = List.empty<HourlyLimit>();
-    for ((periodIndex, limit) in hourlyLimits.entries()) { limits.add({ periodIndex; limit }) };
-    limits.toArray();
+    let userId = newUserIdCounter;
+    newUserIdCounter += 1;
+    newCredentials.add(username, { userId; passwordHash = hashPassword(password) });
+    newUserProfiles.add(userId, { name = username });
+    if (not newAdminAssigned) {
+      newUserRoles.add(userId, #admin);
+      newAdminAssigned := true;
+    } else {
+      newUserRoles.add(userId, #guest);
+    };
+    #ok(userId);
   };
 
-  public query ({ caller }) func getSlotUsageWithLimits() : async [SlotUsageWithLimit] {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only users can view slot usage with limits");
-    };
-    let slotUsages = getSlotUsageInternal();
-    let results = List.empty<SlotUsageWithLimit>();
-    for (slot in slotUsages.values()) {
-      let periodIndex = switch (displayPeriods.indexOf(slot.timeSlot)) { case (?idx) { idx }; case (null) { 0 : Nat } };
-      let limit = switch (hourlyLimits.get(periodIndex)) { case (?l) { l }; case (null) { 10 } };
-      results.add({ slot with limit });
-    };
-    results.toArray();
-  };
-
-  public shared ({ caller }) func setDailyCap(cap : Nat) : async () {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
-      Runtime.trap("Unauthorized: Only admins can set daily cap");
-    };
-    checkAndResetDay();
-    state.dailyCap := cap;
-  };
-
-  public shared ({ caller }) func setHourlyLimit(periodIndex : Nat, limit : Nat) : async () {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
-      Runtime.trap("Unauthorized: Only admins can set hourly limits");
-    };
-    if (periodIndex >= displayPeriods.size()) Runtime.trap("Invalid period index");
-    hourlyLimits.add(periodIndex, limit);
-  };
-
-  public shared ({ caller }) func addApproval(icName : Text, managerName : Text, startHour : Text, endHour : Text, exclusionDate : Text) : async ApprovalEntry {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only users can add approvals");
-    };
-    checkAndResetDay();
-    let approvalsArray = state.dailyApprovals.toArray();
-    let startIndex = switch (findHourIndex(startHour)) { case (?idx) { idx }; case (null) { Runtime.trap("Invalid start hour: " # startHour) } };
-    let endIndex = switch (findHourIndex(endHour)) { case (?idx) { idx }; case (null) { Runtime.trap("Invalid end hour: " # endHour) } };
-    if (endIndex <= startIndex) Runtime.trap("End hour must be later than start hour");
-    for (periodIndex in Nat.range(startIndex, endIndex)) {
-      let periodCount = approvalsArray.filter(func(entry) {
-        if (entry.exclusionDate != exclusionDate) { return false };
-        let es = findHourIndex(entry.startHour);
-        let ee = findHourIndex(entry.endHour);
-        switch (es, ee) { case (?s, ?e) { s <= periodIndex and e > periodIndex }; case (_) { false } };
-      }).size();
-      let periodLimit = switch (hourlyLimits.get(periodIndex)) { case (?l) { l }; case (null) { 10 } };
-      if (periodCount >= periodLimit) Runtime.trap("Period " # periodIndex.toText() # " is full for " # exclusionDate);
-    };
-    for (entry in approvalsArray.values()) {
-      if (Text.equal(entry.icName, icName) and entry.exclusionDate == exclusionDate) {
-        let entryStart = switch (findHourIndex(entry.startHour)) { case (?idx) { idx }; case (null) { Runtime.trap("Invalid start hour in existing entry: " # entry.startHour) } };
-        let entryEnd = switch (findHourIndex(entry.endHour)) { case (?idx) { idx }; case (null) { Runtime.trap("Invalid end hour in existing entry: " # entry.endHour) } };
-        if (startIndex < entryEnd and endIndex > entryStart) {
-          Runtime.trap(icName # "already has an approved exclusion that overlaps that time range (" # entry.startHour # " - " # entry.endHour # ") for " # exclusionDate);
+  public shared func login(username : Text, password : Text) : async R<Text, Text> {
+    switch (newCredentials.get(username)) {
+      case (null) { #err("Invalid username or password") };
+      case (?cred) {
+        if (cred.passwordHash != hashPassword(password)) {
+          return #err("Invalid username or password");
         };
+        let token = generateToken(cred.userId);
+        newSessionTokens.add(token, { userId = cred.userId; createdAtNs = Time.now() });
+        #ok(token);
       };
     };
-    let newEntry : ApprovalEntry = { 
-      entryId = state.lastAssignedId; 
-      icName; 
-      managerName; 
-      timestampNs = Time.now(); 
-      startHour; 
-      endHour; 
-      exclusionDate;
-      createdBy = caller;
-    };
-    state.dailyApprovals.add(newEntry);
-    state.lastAssignedId += 1;
-    newEntry;
   };
 
-  public shared ({ caller }) func removeApproval(entryId : Nat) : async () {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only users can remove approvals");
-    };
-    
-    let approvalsList = state.dailyApprovals.toArray();
-    let entryToRemove = approvalsList.filter(func(entry) { entry.entryId == entryId });
-    
-    if (entryToRemove.size() == 0) {
-      Runtime.trap("No entry found with id " # entryId.toText());
-    };
-    
-    // Authorization check: only the creator or an admin can remove an approval
-    let isAdmin = AccessControl.isAdmin(accessControlState, caller);
-    let isOwner = entryToRemove[0].createdBy == caller;
-    
-    if (not (isOwner or isAdmin)) {
-      Runtime.trap("Unauthorized: Only the creator or an admin can remove this approval");
-    };
-    
-    let filteredApprovals = approvalsList.filter(func(entry) { entry.entryId != entryId });
-    state.dailyApprovals.clear();
-    for (entry in filteredApprovals.values()) { state.dailyApprovals.add(entry) };
-    checkAndResetDay();
+  public shared func logout(sessionToken : Text) : async () {
+    newSessionTokens.remove(sessionToken);
   };
 
-  public query ({ caller }) func listAllUsers() : async [UserInfo] {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
-      Runtime.trap("Unauthorized: Only admins can list all users");
+  public query func whoami(sessionToken : Text) : async R<UserInfo, Text> {
+    switch (validateSession(sessionToken)) {
+      case (null) { #err("Invalid or expired session") };
+      case (?userId) {
+        let name = switch (newUserProfiles.get(userId)) { case (?p) { p.name }; case (null) { "" } };
+        #ok({ userId; name; role = getUserRole(userId) });
+      };
     };
+  };
+
+  // ── User Profile Endpoints ────────────────────────────────────────────────
+  public query func getCallerUserProfile(sessionToken : Text) : async ?UserProfile {
+    switch (validateSession(sessionToken)) {
+      case (null) { null };
+      case (?userId) { newUserProfiles.get(userId) };
+    };
+  };
+
+  public query func getCallerUserId(sessionToken : Text) : async ?Nat {
+    validateSession(sessionToken);
+  };
+
+  public query func isCallerAdmin(sessionToken : Text) : async Bool {
+    switch (validateSession(sessionToken)) {
+      case (null) { false };
+      case (?userId) { getUserRole(userId) == #admin };
+    };
+  };
+
+  public query func listAllUsers(sessionToken : Text) : async [UserInfo] {
+    let _ = requireAdmin(sessionToken);
     let result = List.empty<UserInfo>();
-    for ((principal, profile) in userProfiles.entries()) {
-      let role = AccessControl.getUserRole(accessControlState, principal);
-      result.add({ principal; name = profile.name; role });
+    for ((uid, profile) in newUserProfiles.entries()) {
+      result.add({ userId = uid; name = profile.name; role = getUserRole(uid) });
     };
     result.toArray();
   };
 
-  public shared ({ caller }) func setUserRole(user : Principal, role : AccessControl.UserRole) : async () {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
-      Runtime.trap("Unauthorized: Only admins can set user roles");
-    };
-    AccessControl.assignRole(accessControlState, caller, user, role);
-  };
-
-  public query ({ caller }) func getCallerUserProfile() : async ?UserProfile {
-    if (caller.isAnonymous()) {
-      Runtime.trap("Unauthorized: Anonymous principals cannot have profiles");
-    };
-    userProfiles.get(caller);
-  };
-
-  public query ({ caller }) func getUserProfile(user : Principal) : async ?UserProfile {
-    if (caller != user and not AccessControl.isAdmin(accessControlState, caller)) {
-      Runtime.trap("Unauthorized: Can only view your own profile or be an admin");
-    };
-    userProfiles.get(user);
-  };
-
-  public shared ({ caller }) func saveCallerUserProfile(profile : UserProfile) : async () {
-    if (caller.isAnonymous()) {
-      Runtime.trap("Unauthorized: Anonymous principals cannot save profiles");
-    };
-
-    let currentRole = AccessControl.getUserRole(accessControlState, caller);
-    if (currentRole == #guest) {
-      if (not adminAssigned) {
-        AccessControl.assignRole(accessControlState, caller, caller, #admin);
-        adminAssigned := true;
+  public shared func setUserRole(sessionToken : Text, targetUserId : Nat, role : UserRole) : async R<(), Text> {
+    switch (validateSession(sessionToken)) {
+      case (null) { #err("Unauthorized: Invalid or expired session") };
+      case (?userId) {
+        if (getUserRole(userId) != #admin) { return #err("Unauthorized: Admin access required") };
+        newUserRoles.add(targetUserId, role);
+        #ok(());
       };
     };
-
-    userProfiles.add(caller, profile);
   };
 
-  public shared ({ caller }) func deleteUser(user : Principal) : async () {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
-      Runtime.trap("Unauthorized: Only admins can delete users");
+  public shared func deleteUser(sessionToken : Text, targetUserId : Nat) : async R<(), Text> {
+    switch (validateSession(sessionToken)) {
+      case (null) { #err("Unauthorized: Invalid or expired session") };
+      case (?userId) {
+        if (getUserRole(userId) != #admin) { return #err("Unauthorized: Admin access required") };
+        if (userId == targetUserId) { return #err("Admins cannot delete themselves") };
+        if (not newUserProfiles.containsKey(targetUserId)) { return #err("User does not exist") };
+        newUserProfiles.remove(targetUserId);
+        newUserRoles.remove(targetUserId);
+        let tokensToRemove = List.empty<Text>();
+        for ((tok, session) in newSessionTokens.entries()) {
+          if (session.userId == targetUserId) { tokensToRemove.add(tok) };
+        };
+        for (tok in tokensToRemove.values()) { newSessionTokens.remove(tok) };
+        #ok(());
+      };
     };
-    if (Principal.equal(caller, user)) {
-      Runtime.trap("Admins cannot delete themselves");
+  };
+
+  // ── Queue Approvals ───────────────────────────────────────────────────────
+  public shared func addApproval(sessionToken : Text, icName : Text, managerName : Text, startHour : Text, endHour : Text, exclusionDate : Text) : async R<ApprovalEntry, Text> {
+    let userId = switch (validateSession(sessionToken)) {
+      case (null) { return #err("Unauthorized: Invalid or expired session") };
+      case (?uid) { uid };
     };
-    if (not userProfiles.containsKey(user)) {
-      Runtime.trap("User does not exist");
+    if (getUserRole(userId) == #guest) {
+      return #err("Unauthorized: Member access required. Your account may be pending approval.");
     };
-    userProfiles.remove(user);
-    AccessControl.assignRole(accessControlState, caller, user, #guest);
+    checkAndResetDay();
+    let startIndex = switch (findHourIndex(startHour)) {
+      case (null) { return #err("Invalid start hour: " # startHour) };
+      case (?idx) { idx };
+    };
+    let endIndex = switch (findHourIndex(endHour)) {
+      case (null) { return #err("Invalid end hour: " # endHour) };
+      case (?idx) { idx };
+    };
+    if (endIndex <= startIndex) { return #err("End hour must be later than start hour") };
+    let approvalsArray = newDailyApprovals.toArray();
+    var pi : Nat = startIndex;
+    while (pi < endIndex) {
+      let periodIdx = pi;
+      let periodCount = approvalsArray.filter(func(entry : ApprovalEntry) : Bool {
+        if (entry.exclusionDate != exclusionDate) { return false };
+        switch (findHourIndex(entry.startHour), findHourIndex(entry.endHour)) {
+          case (?s, ?e) { s <= periodIdx and e > periodIdx };
+          case (_) { false };
+        };
+      }).size();
+      let periodLimit = switch (hourlyLimits.get(periodIdx)) { case (?l) { l }; case (null) { 10 } };
+      if (periodCount >= periodLimit) {
+        return #err("Period " # periodIdx.toText() # " is full for " # exclusionDate);
+      };
+      pi += 1;
+    };
+    for (entry in approvalsArray.vals()) {
+      if (Text.equal(entry.icName, icName) and entry.exclusionDate == exclusionDate) {
+        let entryStart = switch (findHourIndex(entry.startHour)) { case (?idx) { idx }; case (null) { 0 } };
+        let entryEnd = switch (findHourIndex(entry.endHour)) { case (?idx) { idx }; case (null) { 0 } };
+        if (startIndex < entryEnd and endIndex > entryStart) {
+          return #err(icName # " already has an approved exclusion that overlaps that time range (" # entry.startHour # " - " # entry.endHour # ") for " # exclusionDate);
+        };
+      };
+    };
+    let newEntry : ApprovalEntry = {
+      entryId = newLastAssignedId;
+      icName;
+      managerName;
+      timestampNs = Time.now();
+      startHour;
+      endHour;
+      exclusionDate;
+      createdByUserId = userId;
+    };
+    newDailyApprovals.add(newEntry);
+    newLastAssignedId += 1;
+    #ok(newEntry);
+  };
+
+  public shared func removeApproval(sessionToken : Text, entryId : Nat) : async R<(), Text> {
+    let userId = switch (validateSession(sessionToken)) {
+      case (null) { return #err("Unauthorized: Invalid or expired session") };
+      case (?uid) { uid };
+    };
+    if (getUserRole(userId) == #guest) {
+      return #err("Unauthorized: Member access required.");
+    };
+    let approvalsArray = newDailyApprovals.toArray();
+    let matching = approvalsArray.filter(func(e : ApprovalEntry) : Bool { e.entryId == entryId });
+    if (matching.size() == 0) {
+      return #err("No entry found with id " # entryId.toText());
+    };
+    let isAdminUser = getUserRole(userId) == #admin;
+    let isOwner = matching[0].createdByUserId == userId;
+    if (not (isOwner or isAdminUser)) {
+      return #err("Unauthorized: Only the creator or an admin can remove this approval");
+    };
+    let filtered = approvalsArray.filter(func(e : ApprovalEntry) : Bool { e.entryId != entryId });
+    newDailyApprovals.clear();
+    for (entry in filtered.vals()) { newDailyApprovals.add(entry) };
+    checkAndResetDay();
+    #ok(());
+  };
+
+  public query func getDailyApprovals(sessionToken : Text) : async [ApprovalEntry] {
+    let _ = requireUser(sessionToken);
+    let today = nanosecondsToDateString(Time.now());
+    newDailyApprovals.toArray().filter(func(e : ApprovalEntry) : Bool { e.exclusionDate == today });
+  };
+
+  public query func getFutureApprovals(sessionToken : Text) : async [ApprovalEntry] {
+    let _ = requireUser(sessionToken);
+    let today = nanosecondsToDateString(Time.now());
+    newDailyApprovals.toArray().filter(func(e : ApprovalEntry) : Bool { compareDateStrings(e.exclusionDate, today) == #greater });
+  };
+
+  public query func getRemainingSlots(sessionToken : Text) : async Nat {
+    let _ = requireUser(sessionToken);
+    let today = nanosecondsToDateString(Time.now());
+    let todayApprovals = newDailyApprovals.toArray().filter(func(e : ApprovalEntry) : Bool { e.exclusionDate == today });
+    if (todayApprovals.size() >= newDailyCap) { return 0 };
+    newDailyCap - todayApprovals.size();
+  };
+
+  public query func getSlotUsage(sessionToken : Text) : async [SlotUsage] {
+    let _ = requireUser(sessionToken);
+    getSlotUsageInternal();
+  };
+
+  public query func getSlotUsageWithLimits(sessionToken : Text) : async [SlotUsageWithLimit] {
+    let _ = requireUser(sessionToken);
+    let slotUsages = getSlotUsageInternal();
+    let results = List.empty<SlotUsageWithLimit>();
+    for (slot in slotUsages.vals()) {
+      let periodIndex = switch (displayPeriods.indexOf(slot.timeSlot)) { case (?idx) { idx }; case (null) { 0 } };
+      let limit = switch (hourlyLimits.get(periodIndex)) { case (?l) { l }; case (null) { 10 } };
+      results.add({ timeSlot = slot.timeSlot; count = slot.count; limit });
+    };
+    results.toArray();
+  };
+
+  // ── Config ────────────────────────────────────────────────────────────────
+  public query func getDailyCap(sessionToken : Text) : async Nat {
+    let _ = requireUser(sessionToken);
+    newDailyCap;
+  };
+
+  public shared func setDailyCap(sessionToken : Text, cap : Nat) : async R<(), Text> {
+    switch (validateSession(sessionToken)) {
+      case (null) { #err("Unauthorized: Invalid or expired session") };
+      case (?userId) {
+        if (getUserRole(userId) != #admin) { return #err("Unauthorized: Admin access required") };
+        checkAndResetDay();
+        newDailyCap := cap;
+        #ok(());
+      };
+    };
+  };
+
+  public query func getHourlyLimits(sessionToken : Text) : async [HourlyLimit] {
+    let _ = requireUser(sessionToken);
+    let results = List.empty<HourlyLimit>();
+    for ((periodIndex, limit) in hourlyLimits.entries()) {
+      results.add({ periodIndex; limit });
+    };
+    results.toArray();
+  };
+
+  public shared func setHourlyLimit(sessionToken : Text, periodIndex : Nat, limit : Nat) : async R<(), Text> {
+    switch (validateSession(sessionToken)) {
+      case (null) { #err("Unauthorized: Invalid or expired session") };
+      case (?userId) {
+        if (getUserRole(userId) != #admin) { return #err("Unauthorized: Admin access required") };
+        if (periodIndex >= displayPeriods.size()) { return #err("Invalid period index") };
+        hourlyLimits.add(periodIndex, limit);
+        #ok(());
+      };
+    };
+  };
+
+  // ── History ───────────────────────────────────────────────────────────────
+  public query func getHistory(sessionToken : Text, startDate : ?Text, endDate : ?Text) : async [(Text, DailyRecord)] {
+    let _ = requireUser(sessionToken);
+    newHistoryStore.entries().filter(func((date, _) : (Text, DailyRecord)) : Bool {
+      let afterStart = switch (startDate) { case (null) { true }; case (?start) { compareDateStrings(date, start) != #less } };
+      let beforeEnd = switch (endDate) { case (null) { true }; case (?end) { compareDateStrings(date, end) != #greater } };
+      afterStart and beforeEnd;
+    }).toArray();
+  };
+
+  public query func getSummary(sessionToken : Text) : async [DaySummary] {
+    let _ = requireUser(sessionToken);
+    let summaries = List.empty<DaySummary>();
+    for ((date, record) in newHistoryStore.entries()) {
+      summaries.add({ date; cap = record.cap; countApproved = record.approvals.size(); icNames = record.approvals.map(func(e : ApprovalEntry) : Text { e.icName }) });
+    };
+    let today = nanosecondsToDateString(Time.now());
+    let todayApprovals = newDailyApprovals.toArray().filter(func(e : ApprovalEntry) : Bool { e.exclusionDate == today });
+    summaries.add({ date = today; cap = newDailyCap; countApproved = todayApprovals.size(); icNames = todayApprovals.map(func(e : ApprovalEntry) : Text { e.icName }) });
+    summaries.toArray();
   };
 };

@@ -11,9 +11,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useAuth } from "@/hooks/useAuth";
 import {
   useAddApproval,
-  useGetCallerUserProfile,
   useGetDailyApprovals,
   useGetFutureApprovals,
   useGetSlotUsageWithLimits,
@@ -179,7 +179,7 @@ export default function Dashboard() {
     useGetFutureApprovals();
   const { data: slotUsageData = [], isLoading: slotUsageLoading } =
     useGetSlotUsageWithLimits();
-  const { data: userProfile } = useGetCallerUserProfile();
+  const { userInfo } = useAuth();
 
   // Mutations
   const addApprovalMutation = useAddApproval();
@@ -272,7 +272,7 @@ export default function Dashboard() {
       }
     }
 
-    const managerName = userProfile?.name ?? "Unknown";
+    const managerName = userInfo?.name ?? "Unknown";
     try {
       await addApprovalMutation.mutateAsync({
         icName: icName.trim(),
@@ -488,11 +488,11 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              {userProfile?.name && (
+              {userInfo?.name && (
                 <p className="text-xs text-muted-foreground">
                   Approving as{" "}
                   <span className="font-medium text-foreground/70">
-                    {userProfile.name}
+                    {userInfo.name}
                   </span>
                 </p>
               )}

@@ -1,8 +1,7 @@
-import ProfileSetup from "@/components/ProfileSetup";
 import { Button } from "@/components/ui/button";
 import { Toaster } from "@/components/ui/sonner";
-import { useInternetIdentity } from "@/hooks/useInternetIdentity";
-import { useGetCallerUserProfile, useIsCallerAdmin } from "@/hooks/useQueries";
+import { useAuth } from "@/hooks/useAuth";
+import { useIsCallerAdmin } from "@/hooks/useQueries";
 import { cn } from "@/lib/utils";
 import ConfigPage from "@/pages/Config";
 import DashboardPage from "@/pages/Dashboard";
@@ -23,33 +22,17 @@ type Tab = "dashboard" | "history" | "config";
 
 function AppShell() {
   const [activeTab, setActiveTab] = useState<Tab>("dashboard");
-  const { clear, identity } = useInternetIdentity();
+  const { logout, userInfo } = useAuth();
   const queryClient = useQueryClient();
 
-  const {
-    data: userProfile,
-    isLoading: profileLoading,
-    isFetched: profileFetched,
-    isError: profileError,
-  } = useGetCallerUserProfile();
   const { data: isAdmin = false } = useIsCallerAdmin();
 
-  const isAuthenticated = !!identity;
-  // Guard against error states (e.g. anonymous principal) to prevent spurious modal flash
-  const showProfileSetup =
-    isAuthenticated &&
-    !profileLoading &&
-    !profileError &&
-    profileFetched &&
-    userProfile === null;
-
   const handleLogout = async () => {
-    await clear();
+    await logout();
     queryClient.clear();
   };
 
-  const userName =
-    userProfile?.name ?? `${identity?.getPrincipal().toString().slice(0, 8)}…`;
+  const userName = userInfo?.name ?? "User";
 
   const baseNavItems: {
     id: Tab;
@@ -90,6 +73,7 @@ function AppShell() {
                 <button
                   key={id}
                   type="button"
+                  data-ocid={`nav.${id}.tab`}
                   onClick={() => setActiveTab(id)}
                   className={cn(
                     "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-all duration-150",
@@ -106,19 +90,16 @@ function AppShell() {
 
             {/* User / logout */}
             <div className="flex items-center gap-2">
-              {profileLoading ? (
-                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-              ) : (
-                <span className="text-xs text-muted-foreground hidden sm:block font-medium truncate max-w-32">
-                  {userName}
-                </span>
-              )}
+              <span className="text-xs text-muted-foreground hidden sm:block font-medium truncate max-w-32">
+                {userName}
+              </span>
               <Button
                 variant="ghost"
                 size="icon"
                 className="h-8 w-8 text-muted-foreground hover:text-foreground"
                 onClick={handleLogout}
                 aria-label="Sign out"
+                data-ocid="nav.logout.button"
               >
                 <LogOut className="h-4 w-4" />
               </Button>
@@ -137,10 +118,10 @@ function AppShell() {
       {/* Footer */}
       <footer className="border-t border-border/40 mt-auto py-4">
         <p className="text-center text-xs text-muted-foreground/50">
-          © 2026. Built with{" "}
+          © {new Date().getFullYear()}. Built with{" "}
           <Heart className="inline h-3 w-3 fill-danger text-danger" /> using{" "}
           <a
-            href="https://caffeine.ai"
+            href={`https://caffeine.ai?utm_source=caffeine-footer&utm_medium=referral&utm_content=${encodeURIComponent(window.location.hostname)}`}
             target="_blank"
             rel="noopener noreferrer"
             className="underline underline-offset-2 hover:text-muted-foreground transition-colors"
@@ -149,16 +130,12 @@ function AppShell() {
           </a>
         </p>
       </footer>
-
-      {/* Profile setup modal */}
-      <ProfileSetup open={showProfileSetup} />
     </>
   );
 }
 
 export default function App() {
-  const { identity, isInitializing } = useInternetIdentity();
-  const isAuthenticated = !!identity;
+  const { isAuthenticated, isInitializing } = useAuth();
 
   if (isInitializing) {
     return (

@@ -1,0 +1,122 @@
+// Version: 1.0.0
+type ApprovalEntry__959940160 =
+  {
+    createdByUserId : Nat;
+    endHour : Text;
+    entryId : Nat;
+    exclusionDate : Text;
+    icName : Text;
+    managerName : Text;
+    startHour : Text;
+    timestampNs : Int
+  };
+type Credential__740847229 = {passwordHash : Text; userId : Nat};
+type DailyRecord__921170296 =
+  {approvals : [ApprovalEntry__959940160]; cap : Nat};
+type Data__236546928<K, V> =
+  {var count : Nat__1049140820; kvs : [var ?(K, V)]};
+type Internal__554968229<K, V> =
+  {children : [var ?Node__733231314<K, V>]; data : Data__236546928<K, V>};
+type Leaf__405777811<K, V> = {data : Data__236546928<K, V>};
+type List__82500491<T> =
+  {
+    var blockIndex : Nat__1049140820;
+    var blocks : [var [var ?T]];
+    var elementIndex : Nat__1049140820
+  };
+type List__907026316<T> = List__82500491<T>;
+type Map__437521162<K, V> = Map__902978828<K, V>;
+type Map__708208903<K, V> =
+  {var root : Node__733231314<K, V>; var size : Nat__1049140820};
+type Map__902978828<K, V> = Map__708208903<K, V>;
+type Nat__1049140820 = Nat__920180692;
+type Nat__920180692 = Nat;
+type Node__733231314<K, V> =
+  {#internal : Internal__554968229<K, V>; #leaf : Leaf__405777811<K, V>};
+type OldApprovalEntry__635957626 =
+  {
+    createdBy : Principal;
+    endHour : Text;
+    entryId : Nat;
+    exclusionDate : Text;
+    icName : Text;
+    managerName : Text;
+    startHour : Text;
+    timestampNs : Int
+  };
+type OldDailyRecord__597362046 =
+  {approvals : [OldApprovalEntry__635957626]; cap : Nat};
+type OldUserRole__152492197 = {#admin; #guest; #user};
+type Session__750117913 = {createdAtNs : Int; userId : Nat};
+type UserProfile__503163188 = {name : Text};
+type UserRole__669316282 = {#admin; #guest; #user};
+actor {
+  stable accessControlState :
+    {
+      var adminAssigned : Bool;
+      userRoles : Map__437521162<Principal, OldUserRole__152492197>
+    };
+  stable var adminAssigned : Bool;
+  stable defaultDailyCap : Nat;
+  stable displayPeriods : [Text];
+  stable historyStore :
+    {
+      var root : Node__733231314<Text, OldDailyRecord__597362046>;
+      var size : Nat__1049140820
+    };
+  stable nanosecondToSeconds : Nat;
+  stable var newAdminAssigned : Bool;
+  stable newCredentials :
+    {
+      var root : Node__733231314<Text, Credential__740847229>;
+      var size : Nat__1049140820
+    };
+  stable newDailyApprovals :
+    {
+      var blockIndex : Nat__1049140820;
+      var blocks : [var [var ?ApprovalEntry__959940160]];
+      var elementIndex : Nat__1049140820
+    };
+  stable var newDailyCap : Nat;
+  stable newHistoryStore :
+    {
+      var root : Node__733231314<Text, DailyRecord__921170296>;
+      var size : Nat__1049140820
+    };
+  stable newHourlyLimits :
+    {var root : Node__733231314<Nat, Nat>; var size : Nat__1049140820};
+  stable var newLastAssignedId : Nat;
+  stable var newLastUpdateNs : Int;
+  stable newSessionTokens :
+    {
+      var root : Node__733231314<Text, Session__750117913>;
+      var size : Nat__1049140820
+    };
+  stable var newTokenCounter : Nat;
+  stable var newUserIdCounter : Nat;
+  stable newUserProfiles :
+    {
+      var root : Node__733231314<Nat, UserProfile__503163188>;
+      var size : Nat__1049140820
+    };
+  stable newUserRoles :
+    {
+      var root : Node__733231314<Nat, UserRole__669316282>;
+      var size : Nat__1049140820
+    };
+  stable sessionExpiryNs : Int;
+  stable var state :
+    {
+      var dailyApprovals : List__907026316<OldApprovalEntry__635957626>;
+      var dailyCap : Nat;
+      var lastAssignedId : Nat;
+      var lastUpdateNs : Int
+    };
+  stable userProfiles :
+    {
+      var root : Node__733231314<Principal, UserProfile__503163188>;
+      var size : Nat__1049140820
+    };
+  stable validHours : [Text];
+  stable weekdayOffset : Nat
+};

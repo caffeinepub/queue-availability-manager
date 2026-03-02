@@ -1,0 +1,68 @@
+// Version: 1.0.0
+type ApprovalEntry__209453121 =
+  {
+    createdBy : Principal;
+    endHour : Text;
+    entryId : Nat;
+    exclusionDate : Text;
+    icName : Text;
+    managerName : Text;
+    startHour : Text;
+    timestampNs : Int
+  };
+type DailyRecord__495944627 =
+  {approvals : [ApprovalEntry__209453121]; cap : Nat};
+type Data__236546928<K, V> =
+  {var count : Nat__1049140820; kvs : [var ?(K, V)]};
+type Internal__554968229<K, V> =
+  {children : [var ?Node__733231314<K, V>]; data : Data__236546928<K, V>};
+type Leaf__405777811<K, V> = {data : Data__236546928<K, V>};
+type List__82500491<T> =
+  {
+    var blockIndex : Nat__1049140820;
+    var blocks : [var [var ?T]];
+    var elementIndex : Nat__1049140820
+  };
+type List__907026316<T> = List__82500491<T>;
+type Map__437521162<K, V> = Map__902978828<K, V>;
+type Map__708208903<K, V> =
+  {var root : Node__733231314<K, V>; var size : Nat__1049140820};
+type Map__902978828<K, V> = Map__708208903<K, V>;
+type Nat__1049140820 = Nat__920180692;
+type Nat__920180692 = Nat;
+type Node__733231314<K, V> =
+  {#internal : Internal__554968229<K, V>; #leaf : Leaf__405777811<K, V>};
+type UserProfile__518778815 = {name : Text};
+type UserRole__732471048 = {#admin; #guest; #user};
+actor {
+  stable accessControlState :
+    {
+      var adminAssigned : Bool;
+      userRoles : Map__437521162<Principal, UserRole__732471048>
+    };
+  stable var adminAssigned : Bool;
+  stable defaultDailyCap : Nat;
+  stable displayPeriods : [Text];
+  stable historyStore :
+    {
+      var root : Node__733231314<Text, DailyRecord__495944627>;
+      var size : Nat__1049140820
+    };
+  stable hourlyLimits :
+    {var root : Node__733231314<Nat, Nat>; var size : Nat__1049140820};
+  stable nanosecondToSeconds : Nat;
+  stable var state :
+    {
+      var dailyApprovals : List__907026316<ApprovalEntry__209453121>;
+      var dailyCap : Nat;
+      var lastAssignedId : Nat;
+      var lastUpdateNs : Int
+    };
+  stable userProfiles :
+    {
+      var root : Node__733231314<Principal, UserProfile__518778815>;
+      var size : Nat__1049140820
+    };
+  stable validHours : [Text];
+  stable weekdayOffset : Nat
+};

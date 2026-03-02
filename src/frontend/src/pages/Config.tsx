@@ -35,7 +35,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { useInternetIdentity } from "@/hooks/useInternetIdentity";
+import { useAuth } from "@/hooks/useAuth";
 import {
   useDeleteUser,
   useGetHourlyLimits,
@@ -57,8 +57,35 @@ import {
 } from "lucide-react";
 import React, { useState } from "react";
 import { toast } from "sonner";
-import { UserRole } from "../backend.d";
-import type { UserInfo } from "../backend.d";
+
+// ── Local types matching the new backend API ──────────────────────────────────
+
+// The new backend returns UserRole as a Candid variant object, not an enum.
+// Shape: { admin: null } | { user: null } | { guest: null }
+type RoleVariant = { admin: null } | { user: null } | { guest: null };
+
+// The new backend UserInfo has userId: bigint instead of principal: Principal
+interface BackendUserInfo {
+  userId: bigint;
+  name: string;
+  role: RoleVariant;
+}
+
+// ── Role helpers ───────────────────────────────────────────────────────────────
+
+function roleKey(role: unknown): "admin" | "user" | "guest" {
+  if (role && typeof role === "object") {
+    if ("admin" in role) return "admin";
+    if ("user" in role) return "user";
+  }
+  return "guest";
+}
+
+function roleVariant(key: string): RoleVariant {
+  if (key === "admin") return { admin: null };
+  if (key === "user") return { user: null };
+  return { guest: null };
+}
 
 const SLOT_PERIODS = [
   "7 AM - 8 AM",
@@ -137,6 +164,7 @@ function HourlyLimitRow({
           onKeyDown={handleKeyDown}
           className="w-20 h-8 text-sm font-mono text-center"
           disabled={setLimitMutation.isPending}
+          data-ocid="config.hourly_limit.input"
         />
         <span className="text-xs text-muted-foreground">max per hour</span>
       </div>
@@ -146,6 +174,7 @@ function HourlyLimitRow({
         className="h-8 gap-1.5"
         onClick={handleSave}
         disabled={setLimitMutation.isPending || !dirty}
+        data-ocid="config.hourly_limit.save_button"
       >
         {setLimitMutation.isPending ? (
           <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -160,8 +189,9 @@ function HourlyLimitRow({
 
 // ── Role Badge ─────────────────────────────────────────────────────────────────
 
-function RoleBadge({ role }: { role: UserRole }) {
-  if (role === UserRole.admin) {
+function RoleBadge({ role }: { role: unknown }) {
+  const key = roleKey(role);
+  if (key === "admin") {
     return (
       <Badge className="gap-1 bg-primary/10 text-primary border-primary/20 hover:bg-primary/10">
         <ShieldCheck className="h-3 w-3" />
@@ -169,7 +199,7 @@ function RoleBadge({ role }: { role: UserRole }) {
       </Badge>
     );
   }
-  if (role === UserRole.user) {
+  if (key === "user") {
     return (
       <Badge
         className="gap-1 bg-success/10 text-success border-success/20 hover:bg-success/10"
@@ -182,7 +212,7 @@ function RoleBadge({ role }: { role: UserRole }) {
   }
   // guest
   return (
-    <Badge className="badge-guest gap-1 border" style={{}}>
+    <Badge className="badge-guest gap-1 border">
       <Shield className="h-3 w-3" />
       Guest
     </Badge>
@@ -193,33 +223,40 @@ function RoleBadge({ role }: { role: UserRole }) {
 
 function UserRow({
   userInfo,
-  currentPrincipal,
-}: { userInfo: UserInfo; currentPrincipal: string }) {
-  const [selectedRole, setSelectedRole] = useState<UserRole>(userInfo.role);
+  currentUserId,
+  index,
+}: {
+  userInfo: BackendUserInfo;
+  currentUserId: bigint | null;
+  index: number;
+}) {
+  const currentRoleKey = roleKey(userInfo.role);
+  const [selectedRoleKey, setSelectedRoleKey] =
+    useState<string>(currentRoleKey);
   const [dirty, setDirty] = useState(false);
   const setRoleMutation = useSetUserRole();
   const deleteUserMutation = useDeleteUser();
 
   // Sync when role changes externally
   React.useEffect(() => {
-    setSelectedRole(userInfo.role);
+    setSelectedRoleKey(roleKey(userInfo.role));
     setDirty(false);
   }, [userInfo.role]);
 
   const handleRoleChange = (val: string) => {
-    const newRole = val as UserRole;
-    setSelectedRole(newRole);
-    setDirty(newRole !== userInfo.role);
+    setSelectedRoleKey(val);
+    setDirty(val !== currentRoleKey);
   };
 
   const handleSave = async () => {
     try {
       await setRoleMutation.mutateAsync({
-        user: userInfo.principal,
-        role: selectedRole,
+        userId: userInfo.userId,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        role: roleVariant(selectedRoleKey) as any,
       });
       toast.success(
-        `${userInfo.name || "User"} role updated to ${selectedRole}`,
+        `${userInfo.name || "User"} role updated to ${selectedRoleKey}`,
       );
       setDirty(false);
     } catch {
@@ -229,20 +266,24 @@ function UserRow({
 
   const handleDelete = async () => {
     try {
-      await deleteUserMutation.mutateAsync(userInfo.principal);
+      await deleteUserMutation.mutateAsync(userInfo.userId);
       toast.success(`${userInfo.name || "User"} has been deleted`);
     } catch {
       toast.error("Failed to delete user");
     }
   };
 
-  const isGuest = userInfo.role === UserRole.guest;
-  const isSelf = userInfo.principal.toString() === currentPrincipal;
-  const principalStr = userInfo.principal.toString();
-  const shortPrincipal = `${principalStr.slice(0, 8)}…`;
+  const isGuest = currentRoleKey === "guest";
+  const isSelf = currentUserId !== null && userInfo.userId === currentUserId;
+  // Show short user ID for identification
+  const userIdStr = userInfo.userId.toString();
+  const shortId = `#${userIdStr.slice(-6)}`;
 
   return (
-    <TableRow className={cn(isGuest && "bg-guest-row")}>
+    <TableRow
+      data-ocid={`config.users.row.${index}`}
+      className={cn(isGuest && "bg-guest-row")}
+    >
       <TableCell className="font-medium">
         <div className="flex flex-col">
           <span className="text-sm">
@@ -260,9 +301,9 @@ function UserRow({
       <TableCell>
         <span
           className="font-mono text-xs text-muted-foreground"
-          title={principalStr}
+          title={`User ID: ${userIdStr}`}
         >
-          {shortPrincipal}
+          {shortId}
         </span>
       </TableCell>
       <TableCell>
@@ -271,17 +312,20 @@ function UserRow({
       <TableCell>
         <div className="flex items-center gap-2">
           <Select
-            value={selectedRole}
+            value={selectedRoleKey}
             onValueChange={handleRoleChange}
             disabled={setRoleMutation.isPending}
           >
-            <SelectTrigger className="h-8 w-28 text-xs">
+            <SelectTrigger
+              className="h-8 w-28 text-xs"
+              data-ocid={`config.users.select.${index}`}
+            >
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value={UserRole.admin}>Admin</SelectItem>
-              <SelectItem value={UserRole.user}>Member</SelectItem>
-              <SelectItem value={UserRole.guest}>Guest</SelectItem>
+              <SelectItem value="admin">Admin</SelectItem>
+              <SelectItem value="user">Member</SelectItem>
+              <SelectItem value="guest">Guest</SelectItem>
             </SelectContent>
           </Select>
           <Button
@@ -290,6 +334,7 @@ function UserRow({
             className="h-8 gap-1.5"
             onClick={handleSave}
             disabled={setRoleMutation.isPending || !dirty}
+            data-ocid={`config.users.save_button.${index}`}
           >
             {setRoleMutation.isPending ? (
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -305,6 +350,7 @@ function UserRow({
                 variant="ghost"
                 className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
                 disabled={isSelf || deleteUserMutation.isPending}
+                data-ocid={`config.users.delete_button.${index}`}
                 title={
                   isSelf ? "You cannot delete your own account" : "Delete user"
                 }
@@ -316,7 +362,7 @@ function UserRow({
                 )}
               </Button>
             </AlertDialogTrigger>
-            <AlertDialogContent>
+            <AlertDialogContent data-ocid="config.delete_user.dialog">
               <AlertDialogHeader>
                 <AlertDialogTitle>Delete user?</AlertDialogTitle>
                 <AlertDialogDescription>
@@ -326,8 +372,11 @@ function UserRow({
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogCancel data-ocid="config.delete_user.cancel_button">
+                  Cancel
+                </AlertDialogCancel>
                 <AlertDialogAction
+                  data-ocid="config.delete_user.confirm_button"
                   onClick={handleDelete}
                   className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                 >
@@ -347,16 +396,25 @@ function UserRow({
 export default function Config() {
   const { data: hourlyLimits = [], isLoading: limitsLoading } =
     useGetHourlyLimits();
-  const { data: users = [], isLoading: usersLoading } = useListAllUsers();
-  const { identity } = useInternetIdentity();
-  const currentPrincipal = identity?.getPrincipal().toString() ?? "";
+  const { data: rawUsers = [], isLoading: usersLoading } = useListAllUsers();
+  const { userId: currentUserId } = useAuth();
+
+  // Cast to BackendUserInfo[] — the new backend returns userId (bigint) not principal
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const users = rawUsers as unknown as BackendUserInfo[];
 
   // Build a map from periodIndex → limit for quick access
   const limitsMap = new Map<number, number>(
     hourlyLimits.map((hl) => [Number(hl.periodIndex), Number(hl.limit)]),
   );
 
-  const guestCount = users.filter((u) => u.role === UserRole.guest).length;
+  const guestCount = users.filter((u) => roleKey(u.role) === "guest").length;
+
+  // Sort: guests first (pending approval), then users, then admins
+  const sortedUsers = [...users].sort((a, b) => {
+    const order = { guest: 0, user: 1, admin: 2 };
+    return order[roleKey(a.role)] - order[roleKey(b.role)];
+  });
 
   return (
     <div className="space-y-8 animate-fade-up">
@@ -420,7 +478,7 @@ export default function Config() {
                 )}
               </CardTitle>
               <CardDescription className="mt-1">
-                Manage roles and access for everyone who has logged in.
+                Manage roles and access for everyone who has registered.
               </CardDescription>
             </div>
           </div>
@@ -444,25 +502,28 @@ export default function Config() {
               ))}
             </div>
           ) : users.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16 text-center">
+            <div
+              data-ocid="config.users.empty_state"
+              className="flex flex-col items-center justify-center py-16 text-center"
+            >
               <Users className="h-12 w-12 text-muted-foreground/30 mb-4" />
               <p className="text-sm font-medium text-muted-foreground">
                 No users yet
               </p>
               <p className="text-xs text-muted-foreground/60 mt-1">
-                Users will appear here once they log in
+                Users will appear here once they register
               </p>
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <Table>
+              <Table data-ocid="config.users.table">
                 <TableHeader>
                   <TableRow className="bg-muted/30">
                     <TableHead className="text-xs uppercase tracking-wide font-semibold text-muted-foreground pl-6">
                       Name
                     </TableHead>
                     <TableHead className="text-xs uppercase tracking-wide font-semibold text-muted-foreground">
-                      Principal
+                      User ID
                     </TableHead>
                     <TableHead className="text-xs uppercase tracking-wide font-semibold text-muted-foreground">
                       Current Role
@@ -470,23 +531,17 @@ export default function Config() {
                     <TableHead className="text-xs uppercase tracking-wide font-semibold text-muted-foreground">
                       Change Role
                     </TableHead>
-                    <TableHead className="text-xs uppercase tracking-wide font-semibold text-muted-foreground w-10" />
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {/* Sort: guests first (pending approval), then users, then admins */}
-                  {[...users]
-                    .sort((a, b) => {
-                      const order = { guest: 0, user: 1, admin: 2 };
-                      return order[a.role] - order[b.role];
-                    })
-                    .map((userInfo) => (
-                      <UserRow
-                        key={userInfo.principal.toString()}
-                        userInfo={userInfo}
-                        currentPrincipal={currentPrincipal}
-                      />
-                    ))}
+                  {sortedUsers.map((userInfo, idx) => (
+                    <UserRow
+                      key={userInfo.userId.toString()}
+                      userInfo={userInfo}
+                      currentUserId={currentUserId}
+                      index={idx + 1}
+                    />
+                  ))}
                 </TableBody>
               </Table>
             </div>

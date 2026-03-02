@@ -1,4 +1,3 @@
-import type { Principal } from "@icp-sdk/core/principal";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
   ApprovalEntry,
@@ -8,121 +7,116 @@ import type {
   SlotUsage,
   SlotUsageWithLimit,
   UserInfo,
-  UserProfile,
-  UserRole,
 } from "../backend.d";
-import { useActor } from "./useActor";
-import { useInternetIdentity } from "./useInternetIdentity";
+import { useAuth } from "./useAuth";
+import { useBackend } from "./useBackend";
+
+// The new backend UserRole is a Candid variant object, not an enum.
+// We use a loose type here so it works with both old and new backend.d.ts.
+type UserRoleVariant = { admin: null } | { user: null } | { guest: null };
+
+// ── Helper: cast actor to any to work with the new session-token API ──────────
+// The backend.d.ts is regenerated during build; until then we use `any` casts.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnyActor = any;
 
 // ── User Profile ─────────────────────────────────────────────────────────────
 
 export function useGetCallerUserProfile() {
-  const { actor, isFetching: actorFetching } = useActor();
-  const { isInitializing } = useInternetIdentity();
+  const { actor, isFetching } = useBackend();
+  const { token, isInitializing } = useAuth();
 
-  const query = useQuery<UserProfile | null>({
-    queryKey: ["currentUserProfile"],
+  return useQuery<UserInfo | null>({
+    queryKey: ["currentUserProfile", token],
     queryFn: async () => {
-      if (!actor) throw new Error("Actor not available");
+      if (!actor || !token) return null;
       try {
-        return await actor.getCallerUserProfile();
-      } catch (err: unknown) {
-        // Backend throws "User is not registered", "Unauthorized", or "Anonymous" for
-        // brand-new users who haven't called saveCallerUserProfile yet. Treat this as
-        // "no profile" so the ProfileSetup modal will appear and trigger auto-role-assignment.
-        const msg = err instanceof Error ? err.message : String(err);
-        if (
-          msg.includes("not registered") ||
-          msg.includes("Unauthorized") ||
-          msg.includes("Anonymous")
-        ) {
-          return null;
-        }
-        // Catch-all: unknown errors also return null to avoid blocking the UI.
+        const result = await (actor as AnyActor).getCallerUserProfile(token);
+        // Returns UserProfile | null
+        if (result === null || result === undefined) return null;
+        // getCallerUserProfile returns { name: string } | null
+        return result as UserInfo | null;
+      } catch {
         return null;
       }
     },
-    enabled: !!actor && !actorFetching && !isInitializing,
+    enabled: !!actor && !isFetching && !isInitializing && !!token,
     retry: false,
   });
-
-  return {
-    ...query,
-    // Include isInitializing so the loading state covers the full auth lifecycle
-    isLoading: isInitializing || actorFetching || query.isLoading,
-    // Once fetched, never flip back to false — avoids modal flicker on re-renders
-    isFetched: query.isFetched,
-  };
 }
 
-export function useSaveCallerUserProfile() {
-  const { actor } = useActor();
-  const queryClient = useQueryClient();
+export function useWhoami() {
+  const { actor, isFetching } = useBackend();
+  const { token, isInitializing } = useAuth();
 
-  return useMutation({
-    mutationFn: async (profile: UserProfile) => {
-      if (!actor) throw new Error("Actor not available");
-      await actor.saveCallerUserProfile(profile);
+  return useQuery<UserInfo | null>({
+    queryKey: ["whoami", token],
+    queryFn: async () => {
+      if (!actor || !token) return null;
+      try {
+        const result = await (actor as AnyActor).whoami(token);
+        if (result && "ok" in result) return result.ok as UserInfo;
+        return null;
+      } catch {
+        return null;
+      }
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["currentUserProfile"] });
-      // Invalidate role-related queries so the nav and admin checks update immediately
-      // after the backend auto-assigns a role on first save
-      queryClient.invalidateQueries({ queryKey: ["isCallerAdmin"] });
-      queryClient.invalidateQueries({ queryKey: ["callerUserRole"] });
-    },
+    enabled: !!actor && !isFetching && !isInitializing && !!token,
+    retry: false,
   });
 }
 
 // ── Dashboard ─────────────────────────────────────────────────────────────────
 
 export function useGetDailyCap() {
-  const { actor, isFetching } = useActor();
-  const { isInitializing } = useInternetIdentity();
+  const { actor, isFetching } = useBackend();
+  const { token, isInitializing } = useAuth();
   return useQuery<bigint>({
     queryKey: ["dailyCap"],
     queryFn: async () => {
-      if (!actor) return BigInt(0);
-      return actor.getDailyCap();
+      if (!actor || !token) return BigInt(0);
+      return (actor as AnyActor).getDailyCap(token);
     },
-    enabled: !!actor && !isFetching && !isInitializing,
+    enabled: !!actor && !isFetching && !isInitializing && !!token,
   });
 }
 
 export function useGetRemainingSlots() {
-  const { actor, isFetching } = useActor();
-  const { isInitializing } = useInternetIdentity();
+  const { actor, isFetching } = useBackend();
+  const { token, isInitializing } = useAuth();
   return useQuery<bigint>({
     queryKey: ["remainingSlots"],
     queryFn: async () => {
-      if (!actor) return BigInt(0);
-      return actor.getRemainingSlots();
+      if (!actor || !token) return BigInt(0);
+      return (actor as AnyActor).getRemainingSlots(token);
     },
-    enabled: !!actor && !isFetching && !isInitializing,
+    enabled: !!actor && !isFetching && !isInitializing && !!token,
   });
 }
 
 export function useGetDailyApprovals() {
-  const { actor, isFetching } = useActor();
-  const { isInitializing } = useInternetIdentity();
+  const { actor, isFetching } = useBackend();
+  const { token, isInitializing } = useAuth();
   return useQuery<ApprovalEntry[]>({
     queryKey: ["dailyApprovals"],
     queryFn: async () => {
-      if (!actor) return [];
-      return actor.getDailyApprovals();
+      if (!actor || !token) return [];
+      return (actor as AnyActor).getDailyApprovals(token);
     },
-    enabled: !!actor && !isFetching && !isInitializing,
+    enabled: !!actor && !isFetching && !isInitializing && !!token,
   });
 }
 
 export function useSetDailyCap() {
-  const { actor } = useActor();
+  const { actor } = useBackend();
+  const { token } = useAuth();
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: async (cap: number) => {
-      if (!actor) throw new Error("Actor not available");
-      await actor.setDailyCap(BigInt(cap));
+      if (!actor || !token) throw new Error("Not authenticated");
+      const result = await (actor as AnyActor).setDailyCap(token, BigInt(cap));
+      if (result && "err" in result) throw new Error(result.err as string);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["dailyCap"] });
@@ -132,7 +126,8 @@ export function useSetDailyCap() {
 }
 
 export function useAddApproval() {
-  const { actor } = useActor();
+  const { actor } = useBackend();
+  const { token } = useAuth();
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -149,14 +144,18 @@ export function useAddApproval() {
       endHour: string;
       exclusionDate: string;
     }) => {
-      if (!actor) throw new Error("Actor not available");
-      return actor.addApproval(
+      if (!actor || !token) throw new Error("Not authenticated");
+      const result = await (actor as AnyActor).addApproval(
+        token,
         icName,
         managerName,
         startHour,
         endHour,
         exclusionDate,
       );
+      if (result && "err" in result) throw new Error(result.err as string);
+      if (result && "ok" in result) return result.ok as ApprovalEntry;
+      return result as ApprovalEntry;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["dailyApprovals"] });
@@ -169,26 +168,28 @@ export function useAddApproval() {
 }
 
 export function useGetSlotUsage() {
-  const { actor, isFetching } = useActor();
-  const { isInitializing } = useInternetIdentity();
+  const { actor, isFetching } = useBackend();
+  const { token, isInitializing } = useAuth();
   return useQuery<SlotUsage[]>({
     queryKey: ["slotUsage"],
     queryFn: async () => {
-      if (!actor) return [];
-      return actor.getSlotUsage();
+      if (!actor || !token) return [];
+      return (actor as AnyActor).getSlotUsage(token);
     },
-    enabled: !!actor && !isFetching && !isInitializing,
+    enabled: !!actor && !isFetching && !isInitializing && !!token,
   });
 }
 
 export function useRemoveApproval() {
-  const { actor } = useActor();
+  const { actor } = useBackend();
+  const { token } = useAuth();
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: async (entryId: bigint) => {
-      if (!actor) throw new Error("Actor not available");
-      await actor.removeApproval(entryId);
+      if (!actor || !token) throw new Error("Not authenticated");
+      const result = await (actor as AnyActor).removeApproval(token, entryId);
+      if (result && "err" in result) throw new Error(result.err as string);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["dailyApprovals"] });
@@ -201,50 +202,51 @@ export function useRemoveApproval() {
 }
 
 export function useGetFutureApprovals() {
-  const { actor, isFetching } = useActor();
-  const { isInitializing } = useInternetIdentity();
+  const { actor, isFetching } = useBackend();
+  const { token, isInitializing } = useAuth();
   return useQuery<ApprovalEntry[]>({
     queryKey: ["futureApprovals"],
     queryFn: async () => {
-      if (!actor) return [];
-      return actor.getFutureApprovals();
+      if (!actor || !token) return [];
+      return (actor as AnyActor).getFutureApprovals(token);
     },
-    enabled: !!actor && !isFetching && !isInitializing,
+    enabled: !!actor && !isFetching && !isInitializing && !!token,
   });
 }
 
 // ── Slot Usage With Limits ────────────────────────────────────────────────────
 
 export function useGetSlotUsageWithLimits() {
-  const { actor, isFetching } = useActor();
-  const { isInitializing } = useInternetIdentity();
+  const { actor, isFetching } = useBackend();
+  const { token, isInitializing } = useAuth();
   return useQuery<SlotUsageWithLimit[]>({
     queryKey: ["slotUsageWithLimits"],
     queryFn: async () => {
-      if (!actor) return [];
-      return actor.getSlotUsageWithLimits();
+      if (!actor || !token) return [];
+      return (actor as AnyActor).getSlotUsageWithLimits(token);
     },
-    enabled: !!actor && !isFetching && !isInitializing,
+    enabled: !!actor && !isFetching && !isInitializing && !!token,
   });
 }
 
 // ── Hourly Limits ─────────────────────────────────────────────────────────────
 
 export function useGetHourlyLimits() {
-  const { actor, isFetching } = useActor();
-  const { isInitializing } = useInternetIdentity();
+  const { actor, isFetching } = useBackend();
+  const { token, isInitializing } = useAuth();
   return useQuery<HourlyLimit[]>({
     queryKey: ["hourlyLimits"],
     queryFn: async () => {
-      if (!actor) return [];
-      return actor.getHourlyLimits();
+      if (!actor || !token) return [];
+      return (actor as AnyActor).getHourlyLimits(token);
     },
-    enabled: !!actor && !isFetching && !isInitializing,
+    enabled: !!actor && !isFetching && !isInitializing && !!token,
   });
 }
 
 export function useSetHourlyLimit() {
-  const { actor } = useActor();
+  const { actor } = useBackend();
+  const { token } = useAuth();
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -252,8 +254,13 @@ export function useSetHourlyLimit() {
       periodIndex,
       limit,
     }: { periodIndex: number; limit: number }) => {
-      if (!actor) throw new Error("Actor not available");
-      await actor.setHourlyLimit(BigInt(periodIndex), BigInt(limit));
+      if (!actor || !token) throw new Error("Not authenticated");
+      const result = await (actor as AnyActor).setHourlyLimit(
+        token,
+        BigInt(periodIndex),
+        BigInt(limit),
+      );
+      if (result && "err" in result) throw new Error(result.err as string);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["hourlyLimits"] });
@@ -265,26 +272,31 @@ export function useSetHourlyLimit() {
 // ── User Management ───────────────────────────────────────────────────────────
 
 export function useListAllUsers() {
-  const { actor, isFetching } = useActor();
-  const { isInitializing } = useInternetIdentity();
+  const { actor, isFetching } = useBackend();
+  const { token, isInitializing } = useAuth();
   return useQuery<UserInfo[]>({
     queryKey: ["allUsers"],
     queryFn: async () => {
-      if (!actor) return [];
-      return actor.listAllUsers();
+      if (!actor || !token) return [];
+      return (actor as AnyActor).listAllUsers(token);
     },
-    enabled: !!actor && !isFetching && !isInitializing,
+    enabled: !!actor && !isFetching && !isInitializing && !!token,
   });
 }
 
 export function useSetUserRole() {
-  const { actor } = useActor();
+  const { actor } = useBackend();
+  const { token } = useAuth();
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ user, role }: { user: Principal; role: UserRole }) => {
-      if (!actor) throw new Error("Actor not available");
-      await actor.setUserRole(user, role);
+    mutationFn: async ({
+      userId,
+      role,
+    }: { userId: bigint; role: UserRoleVariant }) => {
+      if (!actor || !token) throw new Error("Not authenticated");
+      const result = await (actor as AnyActor).setUserRole(token, userId, role);
+      if (result && "err" in result) throw new Error(result.err as string);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["allUsers"] });
@@ -293,13 +305,15 @@ export function useSetUserRole() {
 }
 
 export function useDeleteUser() {
-  const { actor } = useActor();
+  const { actor } = useBackend();
+  const { token } = useAuth();
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (user: Principal) => {
-      if (!actor) throw new Error("Actor not available");
-      await actor.deleteUser(user);
+    mutationFn: async (userId: bigint) => {
+      if (!actor || !token) throw new Error("Not authenticated");
+      const result = await (actor as AnyActor).deleteUser(token, userId);
+      if (result && "err" in result) throw new Error(result.err as string);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["allUsers"] });
@@ -308,21 +322,19 @@ export function useDeleteUser() {
 }
 
 export function useIsCallerAdmin() {
-  const { actor, isFetching } = useActor();
-  const { isInitializing } = useInternetIdentity();
+  const { actor, isFetching } = useBackend();
+  const { token, isInitializing } = useAuth();
   return useQuery<boolean>({
-    queryKey: ["isCallerAdmin"],
+    queryKey: ["isCallerAdmin", token],
     queryFn: async () => {
-      if (!actor) return false;
+      if (!actor || !token) return false;
       try {
-        return await actor.isCallerAdmin();
+        return await (actor as AnyActor).isCallerAdmin(token);
       } catch {
-        // Backend may trap for brand-new users who have no role yet.
-        // Treat any error as "not admin" so the UI doesn't break on first login.
         return false;
       }
     },
-    enabled: !!actor && !isFetching && !isInitializing,
+    enabled: !!actor && !isFetching && !isInitializing && !!token,
   });
 }
 
@@ -332,27 +344,27 @@ export function useGetHistory(
   startDate: string | null,
   endDate: string | null,
 ) {
-  const { actor, isFetching } = useActor();
-  const { isInitializing } = useInternetIdentity();
+  const { actor, isFetching } = useBackend();
+  const { token, isInitializing } = useAuth();
   return useQuery<Array<[string, DailyRecord]>>({
-    queryKey: ["history", startDate, endDate],
+    queryKey: ["history", startDate, endDate, token],
     queryFn: async () => {
-      if (!actor) return [];
-      return actor.getHistory(startDate, endDate);
+      if (!actor || !token) return [];
+      return (actor as AnyActor).getHistory(token, startDate, endDate);
     },
-    enabled: !!actor && !isFetching && !isInitializing,
+    enabled: !!actor && !isFetching && !isInitializing && !!token,
   });
 }
 
 export function useGetSummary() {
-  const { actor, isFetching } = useActor();
-  const { isInitializing } = useInternetIdentity();
+  const { actor, isFetching } = useBackend();
+  const { token, isInitializing } = useAuth();
   return useQuery<DaySummary[]>({
     queryKey: ["summary"],
     queryFn: async () => {
-      if (!actor) return [];
-      return actor.getSummary();
+      if (!actor || !token) return [];
+      return (actor as AnyActor).getSummary(token);
     },
-    enabled: !!actor && !isFetching && !isInitializing,
+    enabled: !!actor && !isFetching && !isInitializing && !!token,
   });
 }
