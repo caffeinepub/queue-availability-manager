@@ -12,12 +12,18 @@ type Mode = "login" | "register";
 export default function Login() {
   const { login, register } = useAuth();
   const [mode, setMode] = useState<Mode>("login");
+  // Login fields
   const [username, setUsername] = useState("");
+  // Register fields (first + last name)
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<{
     username?: string;
+    firstName?: string;
+    lastName?: string;
     password?: string;
     confirm?: string;
     form?: string;
@@ -27,6 +33,8 @@ export default function Login() {
   const resetErrors = () =>
     setFieldErrors({
       username: undefined,
+      firstName: undefined,
+      lastName: undefined,
       password: undefined,
       confirm: undefined,
       form: undefined,
@@ -38,14 +46,20 @@ export default function Login() {
 
     // Client-side validation
     const errors: typeof fieldErrors = {};
-    if (!username.trim()) errors.username = "Username is required";
-    if (!password) errors.password = "Password is required";
+
     if (mode === "register") {
+      if (!firstName.trim()) errors.firstName = "First name is required";
+      if (!lastName.trim()) errors.lastName = "Last name is required";
+      if (!password) errors.password = "Password is required";
       if (password.length < 6)
         errors.password = "Password must be at least 6 characters";
       if (password !== confirmPassword)
         errors.confirm = "Passwords do not match";
+    } else {
+      if (!username.trim()) errors.username = "Username is required";
+      if (!password) errors.password = "Password is required";
     }
+
     if (Object.keys(errors).length > 0) {
       setFieldErrors(errors);
       return;
@@ -54,7 +68,9 @@ export default function Login() {
     setIsSubmitting(true);
     try {
       if (mode === "register") {
-        const result = await register(username.trim(), password);
+        // Concatenate first + last name as the username
+        const fullName = `${firstName.trim()} ${lastName.trim()}`;
+        const result = await register(fullName, password);
         if (result.err) {
           setFieldErrors({ form: result.err });
         } else {
@@ -86,6 +102,8 @@ export default function Login() {
     resetErrors();
     setRegistrationSuccess(false);
     setUsername("");
+    setFirstName("");
+    setLastName("");
     setPassword("");
     setConfirmPassword("");
   };
@@ -138,37 +156,103 @@ export default function Login() {
               </div>
             )}
 
-            {/* Username */}
-            <div className="space-y-1.5">
-              <Label
-                htmlFor="username"
-                className="text-xs font-medium text-muted-foreground uppercase tracking-wide"
-              >
-                Username
-              </Label>
-              <Input
-                id="username"
-                data-ocid="login.input"
-                placeholder="e.g. jane.smith"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                autoComplete="username"
-                disabled={isSubmitting}
-                aria-invalid={!!fieldErrors.username}
-                aria-describedby={
-                  fieldErrors.username ? "username-error" : undefined
-                }
-              />
-              {fieldErrors.username && (
-                <p
-                  id="username-error"
-                  data-ocid="login.error_state"
-                  className="text-xs text-destructive mt-1"
+            {mode === "login" ? (
+              /* ── Login: single username field ── */
+              <div className="space-y-1.5">
+                <Label
+                  htmlFor="username"
+                  className="text-xs font-medium text-muted-foreground uppercase tracking-wide"
                 >
-                  {fieldErrors.username}
-                </p>
-              )}
-            </div>
+                  Username
+                </Label>
+                <Input
+                  id="username"
+                  data-ocid="login.input"
+                  placeholder="e.g. Jane Smith"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  autoComplete="username"
+                  disabled={isSubmitting}
+                  aria-invalid={!!fieldErrors.username}
+                  aria-describedby={
+                    fieldErrors.username ? "username-error" : undefined
+                  }
+                />
+                {fieldErrors.username && (
+                  <p
+                    id="username-error"
+                    data-ocid="login.error_state"
+                    className="text-xs text-destructive mt-1"
+                  >
+                    {fieldErrors.username}
+                  </p>
+                )}
+              </div>
+            ) : (
+              /* ── Register: first + last name fields ── */
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label
+                    htmlFor="first-name"
+                    className="text-xs font-medium text-muted-foreground uppercase tracking-wide"
+                  >
+                    First Name
+                  </Label>
+                  <Input
+                    id="first-name"
+                    data-ocid="register.input"
+                    placeholder="Jane"
+                    value={firstName}
+                    onChange={(e) => setFirstName(e.target.value)}
+                    autoComplete="given-name"
+                    disabled={isSubmitting}
+                    aria-invalid={!!fieldErrors.firstName}
+                    aria-describedby={
+                      fieldErrors.firstName ? "first-name-error" : undefined
+                    }
+                  />
+                  {fieldErrors.firstName && (
+                    <p
+                      id="first-name-error"
+                      data-ocid="register.error_state"
+                      className="text-xs text-destructive mt-1"
+                    >
+                      {fieldErrors.firstName}
+                    </p>
+                  )}
+                </div>
+                <div className="space-y-1.5">
+                  <Label
+                    htmlFor="last-name"
+                    className="text-xs font-medium text-muted-foreground uppercase tracking-wide"
+                  >
+                    Last Name
+                  </Label>
+                  <Input
+                    id="last-name"
+                    data-ocid="register.input"
+                    placeholder="Smith"
+                    value={lastName}
+                    onChange={(e) => setLastName(e.target.value)}
+                    autoComplete="family-name"
+                    disabled={isSubmitting}
+                    aria-invalid={!!fieldErrors.lastName}
+                    aria-describedby={
+                      fieldErrors.lastName ? "last-name-error" : undefined
+                    }
+                  />
+                  {fieldErrors.lastName && (
+                    <p
+                      id="last-name-error"
+                      data-ocid="register.error_state"
+                      className="text-xs text-destructive mt-1"
+                    >
+                      {fieldErrors.lastName}
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* Password */}
             <div className="space-y-1.5">
@@ -180,7 +264,7 @@ export default function Login() {
               </Label>
               <Input
                 id="password"
-                data-ocid="login.input"
+                data-ocid={mode === "login" ? "login.input" : "register.input"}
                 type="password"
                 placeholder="••••••••"
                 value={password}
