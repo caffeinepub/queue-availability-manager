@@ -321,6 +321,48 @@ export function useDeleteUser() {
   });
 }
 
+export function useCreateUser() {
+  const { actor } = useBackend();
+  const { token } = useAuth();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      username,
+      initialPassword,
+    }: {
+      username: string;
+      initialPassword: string;
+    }): Promise<bigint> => {
+      if (!actor) throw new Error("Not connected");
+      // register is a public endpoint — no token needed
+      const result = await (actor as AnyActor).register(
+        username,
+        initialPassword,
+      );
+      if (result && "err" in result) throw new Error(result.err as string);
+      if (!result || !("ok" in result)) throw new Error("Registration failed");
+      const newUserId = result.ok as bigint;
+
+      // Immediately activate as member (not guest) if we have a token
+      if (token) {
+        try {
+          await (actor as AnyActor).setUserRole(token, newUserId, {
+            user: null,
+          });
+        } catch {
+          // non-critical — user can be promoted manually
+        }
+      }
+
+      return newUserId;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["allUsers"] });
+    },
+  });
+}
+
 export function useIsCallerAdmin() {
   const { actor, isFetching } = useBackend();
   const { token, isInitializing } = useAuth();
